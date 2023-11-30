@@ -42,6 +42,7 @@ import ReleaseDetail from './ReleaseDetail'
 import ReleaseLink from './ReleaseLink'
 import Repository from './Repository'
 import RequestContent from './RequestContent'
+import { Resource } from './Resource'
 import Resources from './Resources'
 import RestrictedResource from './RestrictedResource'
 import RolesType from './RolesType'
@@ -92,6 +93,7 @@ export type {
     ReleaseLink,
     Repository,
     RequestContent,
+    Resource,
     Resources,
     RestrictedResource,
     RolesType,
