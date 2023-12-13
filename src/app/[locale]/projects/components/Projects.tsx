@@ -21,6 +21,7 @@ import { useSearchParams } from 'next/navigation'
 import { Dropdown, OverlayTrigger, Spinner, Tooltip } from 'react-bootstrap'
 import { FaClipboard, FaPencilAlt, FaTrashAlt } from 'react-icons/fa'
 import { MdOutlineTask } from 'react-icons/md'
+import EditProjectAttachments from './Attachments'
 
 type EmbeddedProjects = Embedded<TypeProject, 'sw360:projects'>
 
@@ -307,6 +308,7 @@ function Project() {
                         )}
                     </div>
                 </div>
+                <EditProjectAttachments />
             </div>
         </div>
     )
