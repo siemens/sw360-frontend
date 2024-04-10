@@ -16,7 +16,7 @@ interface Context {
 const ProjectEditPage = async ({ params }: Context) => {
     const projectId = params.id
 
-    return <EditProject projectId={projectId} />
+    return <EditProject projectId = {projectId} />
 }
 
 export default ProjectEditPage
