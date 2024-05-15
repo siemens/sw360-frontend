@@ -18,7 +18,8 @@ import { useEffect, useState, useCallback } from 'react'
 import { Embedded, HttpStatus, ModerationRequest } from '@/object-types'
 import { notFound } from 'next/navigation'
 import ExpandingModeratorCell from './ExpandingModeratorCell'
-import { Spinner } from 'react-bootstrap'
+import { OverlayTrigger, Spinner, Tooltip } from 'react-bootstrap'
+import { FaTrashAlt } from 'react-icons/fa'
 
 type EmbeddedModeratoinRequest = Embedded<ModerationRequest, 'sw360:moderationRequests'>
 interface ModerationRequestMap {
@@ -64,8 +65,11 @@ function ClosedModerationRequest() {
     useEffect(() => {
         setLoading(true)
         void fetchData('moderationrequest').then((moderationRequests: EmbeddedModeratoinRequest) => {
-            const filteredModerationRequests = moderationRequests['_embedded']['sw360:moderationRequests'].filter((item: ModerationRequest) => {
-                return item.moderationState === 'APPROVED' || item.moderationState === 'REJECTED';
+            const filteredModerationRequests = 
+                    moderationRequests['_embedded']['sw360:moderationRequests']
+                    .filter((item: ModerationRequest) => {
+                return item.moderationState === 'APPROVED' ||
+                       item.moderationState === 'REJECTED';
             });
 
             setTableData(
@@ -77,11 +81,15 @@ function ClosedModerationRequest() {
                     item.requestingUserDepartment,
                     item.moderators,
                     moderationRequestStatus[item.moderationState],
-                    '',
+                    item.id,
                 ])
             )
             setLoading(false)
-        })}, [fetchData, session])
+        })}, [fetchData, session, tableData])
+    
+    const handleDeleteModerationRequest= (moderationRequestId: string) => {
+        console.log('id', moderationRequestId)
+    }
 
     const columns = [
         {
@@ -141,6 +149,20 @@ function ClosedModerationRequest() {
             id: 'closedModerationRequest.actions',
             name: t('Actions'),
             sort: true,
+            formatter: (moderationRequestId: string) =>
+                _(
+                    <>
+                        <OverlayTrigger overlay={<Tooltip>{t('Delete')}</Tooltip>}>
+                            <span className='d-inline-block'>
+                                <FaTrashAlt
+                                    className='btn-icon'
+                                    onClick={() => handleDeleteModerationRequest(moderationRequestId)}
+                                    style={{ color: 'gray', fontSize: '18px' }}
+                                />
+                            </span>
+                        </OverlayTrigger>
+                    </>
+                ),
         }
     ]
 
