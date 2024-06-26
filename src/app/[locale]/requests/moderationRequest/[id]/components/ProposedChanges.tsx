@@ -37,12 +37,16 @@ export default function ProposedChanges({ moderationRequestData }:
     const t = useTranslations('default')
     const { data: session, status } = useSession()
     const dafaultTitle = t('BASIC FIELD CHANGES')
+    const releaseTitle = t('RELEASE CHANGES')
     const attachmentTitle = t('ATTACHMENTS')
     const [requestAdditionType, setRequestAdditionType] = useState<string>('')
     const [requestDeletionType, setRequestDeletionType] = useState<string>('')
     const [proposedBasicChangesData, setProposedBasicChangesData] = useState([])
+    const [proposedReleaseChangesData, setProposedReleaseChangesData] = useState([])
     const [documentDelete, setDocumentDelete] = useState<boolean>(false)
     const [proposedAttachmentChangesData] = useState([])
+    const [isReleaseChanged, setIsReleaseChanged] = useState<boolean>(false)
+
     const columns = [
         {
             id: 'proposedChanges.fieldName',
@@ -126,6 +130,16 @@ export default function ProposedChanges({ moderationRequestData }:
                                                             ModerationRequestDetails] as interimDataType
         const changedData: Array<any> = [];
         let isObject:boolean = false
+
+        if (
+            documentAdditions?.linkedReleases?.length !== undefined &&
+            documentDeletions?.linkedReleases?.length !== undefined &&
+            (documentAdditions.linkedReleases.length !== 0 || documentDeletions.linkedReleases.length !== 0)
+          ) {
+            setIsReleaseChanged(true)
+            setProposedReleaseChangesData([])
+          }
+          
         
         // Check if there is a document delete request raised
         if (moderationRequestData['requestDocumentDelete'] == true) {
@@ -293,6 +307,17 @@ export default function ProposedChanges({ moderationRequestData }:
                             <div className = {`${styles}`}>
                                 <Table columns={columns}
                                     data={proposedBasicChangesData}
+                                    pagination={{ limit: 5 }}
+                                    selector={false}/>
+                            </div>
+                        </div>
+                    )}
+                    { isReleaseChanged ?? (
+                        <div>
+                            <TableHeader title={releaseTitle} />
+                            <div className = {`${styles}`}>
+                                <Table columns={columns}
+                                    data={proposedReleaseChangesData}
                                     pagination={{ limit: 5 }}
                                     selector={false}/>
                             </div>
