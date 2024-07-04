@@ -9,12 +9,15 @@
 
 'use client'
 
+import { Dispatch, SetStateAction } from 'react'
 import { useTranslations } from 'next-intl'
 import { useState } from 'react'
 import { Nav, Tab, Dropdown } from 'react-bootstrap'
 import ObligationView from './ObligationsView/ObligationsView'
+import { ActionType, ProjectObligation } from '@/object-types'
 
-export default function Obligations({ projectId }: { projectId: string }) {
+export default function Obligations({ projectId, actionType, payload, setPayload }: 
+    { projectId: string, actionType: ActionType, payload?: ProjectObligation, setPayload?: Dispatch<SetStateAction<ProjectObligation>> }) {
     const t = useTranslations('default')
     const [key, setKey] = useState('obligations-view')
 
@@ -36,17 +39,20 @@ export default function Obligations({ projectId }: { projectId: string }) {
                             </Nav.Item>
                         </Nav>
                     </div>
-                    <Dropdown className='col-auto'>
-                        <Dropdown.Toggle variant='primary'>{t('Create Project Clearing Report')}</Dropdown.Toggle>
-                        <Dropdown.Menu>
-                            <Dropdown.Item eventKey={key}>{t('Project only')}</Dropdown.Item>
-                            <Dropdown.Item eventKey={key}>{t('Project with sub project')}</Dropdown.Item>
-                        </Dropdown.Menu>
-                    </Dropdown>
+                    {
+                        (actionType === ActionType.DETAIL) &&
+                        <Dropdown className='col-auto'>
+                            <Dropdown.Toggle variant='primary'>{t('Create Project Clearing Report')}</Dropdown.Toggle>
+                            <Dropdown.Menu>
+                                <Dropdown.Item eventKey={key}>{t('Project only')}</Dropdown.Item>
+                                <Dropdown.Item eventKey={key}>{t('Project with sub project')}</Dropdown.Item>
+                            </Dropdown.Menu>
+                        </Dropdown>
+                    }
                 </div>
                 <Tab.Content className='mt-4'>
                     <Tab.Pane eventKey='obligations-view'>
-                        <ObligationView projectId={projectId}/>
+                        <ObligationView projectId={projectId} actionType={actionType} payload={payload} setPayload={setPayload}/>
                     </Tab.Pane>
                     <Tab.Pane eventKey='release-view'>
                         

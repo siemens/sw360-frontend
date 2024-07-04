@@ -39,7 +39,7 @@ import ModerationRequestPayload from './ModerationRequestPayload'
 import NavList from './NavList'
 import NodeData from './NodeData'
 import OAuthClient from './OAuthClient'
-import { Obligation, ProjectObligationsList, LicenseObligationRelease } from './Obligation'
+import { Obligation, ProjectObligationsList, LicenseObligationRelease, ProjectObligation } from './Obligation'
 import Package from './Package'
 import Preferences from './Preferences'
 import Project from './Project'
@@ -168,7 +168,8 @@ export type {
     MessageOptions,
     VulnerabilityTrackingStatus,
     ProjectVulnerabilityTrackingStatus,
-    SearchDuplicatesResponse
+    SearchDuplicatesResponse,
+    ProjectObligation
 }
 
 // Special functions for populate data
