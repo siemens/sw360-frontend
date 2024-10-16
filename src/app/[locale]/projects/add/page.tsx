@@ -14,9 +14,9 @@ import LinkedReleasesAndProjects from '@/components/ProjectAddSummary/LinkedRele
 import Summary from '@/components/ProjectAddSummary/Summary'
 import { HttpStatus, InputKeyValue, ProjectPayload, Vendor } from '@/object-types'
 import MessageService from '@/services/message.service'
-import { ApiUtils } from '@/utils'
+import { ApiUtils, CommonUtils } from '@/utils'
 import { ENABLE_FLEXIBLE_PROJECT_RELEASE_RELATIONSHIP } from '@/utils/env'
-import { getSession } from 'next-auth/react'
+import { getSession, signOut } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
@@ -50,9 +50,9 @@ function AddProjects() {
         domain: '',
         leadArchitect: '',
         defaultVendorId: '',
-        externalUrls: null,
-        externalIds: null,
-        additionalData: null,
+        externalUrls: undefined,
+        externalIds: undefined,
+        additionalData: undefined,
         state: 'ACTIVE',
         phaseOutSince: '',
         moderators: [],
@@ -104,6 +104,8 @@ function AddProjects() {
     const createProject = async () => {
         try {
             const session = await getSession()
+            if (CommonUtils.isNullOrUndefined(session))
+                return signOut()
             const createUrl = ENABLE_FLEXIBLE_PROJECT_RELEASE_RELATIONSHIP ? `projects/network` : 'projects'
             const response = await ApiUtils.POST(createUrl, projectPayload, session.user.access_token)
 
