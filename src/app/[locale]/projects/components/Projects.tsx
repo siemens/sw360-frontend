@@ -226,19 +226,19 @@ function Project() {
             then: (data: EmbeddedProjects) => {
                 return data._embedded['sw360:projects'].map((elem: TypeProject) => [
                     {
-                        id: elem['_links']['self']['href'].substring(elem['_links']['self']['href'].lastIndexOf('/') + 1),
+                        id: elem?._links?.self.href.substring(elem['_links']['self']['href'].lastIndexOf('/') + 1),
                         name: elem.name ?? '',
                         version: elem.version ?? ''
                     },
                     elem.description ?? '',
                     elem.projectResponsible ?? '',
                     { state: elem.state ?? '', clearingState: elem.clearingState ?? '' },
-                    elem['_links']['self']['href'].substring(elem['_links']['self']['href'].lastIndexOf('/') + 1),
-                    elem['_links']['self']['href'].substring(elem['_links']['self']['href'].lastIndexOf('/') + 1),
+                    elem?._links?.self.href.substring(elem['_links']['self']['href'].lastIndexOf('/') + 1),
+                    elem?._links?.self.href.substring(elem['_links']['self']['href'].lastIndexOf('/') + 1),
                 ])
             },
-            total: (data: EmbeddedProjects) => data.page.totalElements,
-            headers: { Authorization: `${session.user.access_token}` },
+            total: (data: EmbeddedProjects) => data.page ? data.page.totalElements : 0,
+            headers: { Authorization: `${session?.user?.access_token}` },
         }
     }
 

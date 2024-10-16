@@ -18,10 +18,9 @@ import { Alert, Button, Col, Form, Modal, OverlayTrigger, Row, Tooltip } from 'r
 import { FaInfoCircle } from 'react-icons/fa'
 
 import { Table, _ } from '@/components/sw360'
-import { Embedded, HttpStatus, Project } from '@/object-types'
+import { HttpStatus, Project } from '@/object-types'
 import { ApiUtils, CommonUtils } from '@/utils'
 
-type EmbeddedProject = Embedded<Project, 'sw360:projects'>
 
 const Capitalize = (text: string) =>
     text.split('_').reduce((s, c) => s + ' ' + (c.charAt(0) + c.substring(1).toLocaleLowerCase()), '')
@@ -42,14 +41,20 @@ export default function LinkProjects({
 }) {
     const t = useTranslations('default')
     const { data: session } = useSession()
-    const [projectData, setProjectData] = useState<any[] | null>(null)
+    const [projectData, setProjectData] = useState<Array<Array<string | Object>>>([])
     const [linkProjects, setLinkProjects] = useState<Map<string, any>>(new Map())
     const [alert, setAlert] = useState<AlertData | null>(null)
     const searchValueRef = useRef<HTMLInputElement>(null)
-    const topRef = useRef(null)
+    const topRef = useRef<HTMLDivElement>(null)
 
     const scrollToTop = () => {
-        topRef.current.scrollTo({ top: 0, left: 0 })
+        if (topRef?.current) {
+            topRef.current.scrollTo({
+                top: 0,
+                left: 0,
+                behavior: 'smooth'
+            })
+        }
     }
 
     const columns = [
@@ -136,34 +141,38 @@ export default function LinkProjects({
         },
     ]
 
-    const handleSearch = async ({ searchValue }: { searchValue: string }): Promise<EmbeddedProject> => {
+    const handleSearch = async ({ searchValue }: { searchValue: string | undefined }) => {
         try {
-            const response = await ApiUtils.GET(
-                `projects?name=${searchValue}&luceneSearch=true`,
-                session.user.access_token
-            )
-            if (response.status === HttpStatus.UNAUTHORIZED) {
+            if (CommonUtils.isNullOrUndefined(session))
                 return signOut()
-            } else if (response.status !== HttpStatus.OK) {
-                return notFound()
+            if (searchValue !== undefined){
+                const response = await ApiUtils.GET(
+                    `projects?name=${searchValue}&luceneSearch=true`,
+                    session.user.access_token
+                )
+                if (response.status === HttpStatus.UNAUTHORIZED) {
+                    return signOut()
+                } else if (response.status !== HttpStatus.OK) {
+                    return notFound()
+                }
+                const data = await response.json()
+                const dataTableFormat =
+                    CommonUtils.isNullOrUndefined(data['_embedded']) &&
+                    CommonUtils.isNullOrUndefined(data?._embedded['sw360:projects'])
+                        ? []
+                        : data['_embedded']['sw360:projects'].map((elem: Project) => [
+                            elem?._links?.self['href'].substring(elem?._links?.self['href'].lastIndexOf('/') + 1),
+                            elem.name,
+                            elem.version,
+                            { state: elem.state, clearingState: elem.clearingState },
+                            elem.projectResponsible,
+                            elem.description,
+                        ])
+                setProjectData(dataTableFormat)
             }
-            const data = await response.json()
-            const dataTableFormat =
-                CommonUtils.isNullOrUndefined(data['_embedded']) &&
-                CommonUtils.isNullOrUndefined(data['_embedded']['sw360:projects'])
-                    ? []
-                    : data['_embedded']['sw360:projects'].map((elem: Project) => [
-                          elem['_links']['self']['href'].substring(elem['_links']['self']['href'].lastIndexOf('/') + 1),
-                          elem.name,
-                          elem.version,
-                          { state: elem.state, clearingState: elem.clearingState },
-                          elem.projectResponsible,
-                          elem.description,
-                      ])
-            setProjectData(dataTableFormat)
         } catch (e) {
             console.error(e)
-        }
+        }   
     }
 
     const handleCheckboxes = (projectId: string) => {
@@ -176,8 +185,10 @@ export default function LinkProjects({
         setLinkProjects(m)
     }
 
-    const handleLinkProjects = async ({ projectId }: { projectId: string }): Promise<any> => {
+    const handleLinkProjects = async ({ projectId }: { projectId: string }) => {
         try {
+            if (CommonUtils.isNullOrUndefined(session))
+                return signOut()
             const data = { linkedProjects: Object.fromEntries(linkProjects) }
             const response = await ApiUtils.PATCH(`projects/${projectId}`, data, session.user.access_token)
             const res = await response.json()
@@ -228,7 +239,7 @@ export default function LinkProjects({
                 show={show}
                 onHide={() => {
                     setShow(false)
-                    setProjectData(null)
+                    setProjectData([])
                     setAlert(null)
                     setLinkProjects(new Map())
                 }}
@@ -270,7 +281,7 @@ export default function LinkProjects({
                                     <Button
                                         variant='secondary'
                                         onClick={async () => {
-                                            await handleSearch({ searchValue: searchValueRef.current.value })
+                                            await handleSearch({ searchValue: searchValueRef?.current?.value })
                                         }}
                                     >
                                         {t('Search')}
@@ -286,7 +297,7 @@ export default function LinkProjects({
                         variant='dark'
                         onClick={() => {
                             setShow(false)
-                            setProjectData(null)
+                            setProjectData([])
                             setAlert(null)
                             setLinkProjects(new Map())
                         }}
