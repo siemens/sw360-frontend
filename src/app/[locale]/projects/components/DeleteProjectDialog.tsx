@@ -10,7 +10,7 @@
 'use client'
 
 import { HttpStatus, Project } from '@/object-types'
-import { ApiUtils } from '@/utils'
+import { ApiUtils, CommonUtils } from '@/utils'
 import { signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { useRouter } from 'next/navigation'
@@ -37,8 +37,8 @@ interface Data {
 
 interface Props {
     projectId?: string
-    show?: boolean
-    setShow?: React.Dispatch<React.SetStateAction<boolean>>
+    show: boolean
+    setShow: React.Dispatch<React.SetStateAction<boolean>>
 }
 
 function DeleteProjectDialog ({ projectId, show, setShow }: Props) {
@@ -68,6 +68,8 @@ function DeleteProjectDialog ({ projectId, show, setShow }: Props) {
     const deleteProject = async () => {
         if (CommonUtils.isNullEmptyOrUndefinedString(projectId))
             return
+        if (CommonUtils.isNullOrUndefined(session))
+            return signOut()
         const response = await ApiUtils.DELETE(`projects/${projectId}`, session.user.access_token)
         try {
             if (response.status == HttpStatus.OK) {
@@ -88,25 +90,25 @@ function DeleteProjectDialog ({ projectId, show, setShow }: Props) {
         }
     }
 
-    useEffect(() => {
-        const fetchData = async (projectId: string) => {
-            if (CommonUtils.isNullEmptyOrUndefinedString(projectId))
-                return
-            if (session) {
-                const projectsResponse = await ApiUtils.GET(`projects/${projectId}`, session.user.access_token)
-                if (projectsResponse.status == HttpStatus.OK) {
-                    const projectData = (await projectsResponse.json()) as Project
-                    setProject(projectData)
-                    handleInternalDataCount(projectData)
-                } else if (projectsResponse.status == HttpStatus.UNAUTHORIZED) {
-                    await signOut()
-                } else {
-                    setProject(DEFAULT_PROJECT_DATA)
-                    handleError()
-                }
+    const fetchData = async (projectId: string | undefined) => {
+        if (CommonUtils.isNullEmptyOrUndefinedString(projectId))
+            return
+        if (session) {
+            const projectsResponse = await ApiUtils.GET(`projects/${projectId}`, session.user.access_token)
+            if (projectsResponse.status == HttpStatus.OK) {
+                const projectData = (await projectsResponse.json()) as Project
+                setProject(projectData)
+                handleInternalDataCount(projectData)
+            } else if (projectsResponse.status == HttpStatus.UNAUTHORIZED) {
+                await signOut()
+            } else {
+                setProject(DEFAULT_PROJECT_DATA)
+                handleError()
             }
         }
+    }
 
+    useEffect(() => {
         fetchData(projectId).catch((err) => {
             console.error(err)
         })
@@ -130,20 +132,20 @@ function DeleteProjectDialog ({ projectId, show, setShow }: Props) {
 
     const handleInternalDataCount = (projectData: Project) => {
         const dataCount: Data = {}
-        if (projectData._embedded['sw360:attachments']) {
+        if (projectData?._embedded?.['sw360:attachments']) {
             dataCount.attachment = projectData._embedded['sw360:attachments'].length
             setVisuallyHideLinkedData(false)
         }
-        if (projectData._embedded['sw360:projects']) {
+        if (projectData?._embedded?.['sw360:projects']) {
             dataCount.project = projectData._embedded['sw360:projects'].length
             setVisuallyHideLinkedData(false)
         }
-        if (projectData._embedded['sw360:releases']) {
-            dataCount.release = projectData._embedded['sw360:releases'].length
+        if (projectData?._embedded?.['sw360:releases']) {
+            dataCount.release = projectData._embedded?.['sw360:releases'].length
             setVisuallyHideLinkedData(false)
         }
-        if (projectData._embedded['sw360:packages']) {
-            dataCount.package = projectData._embedded['sw360:packages'].length
+        if (projectData?._embedded?.['sw360:packages']) {
+            dataCount.package = projectData?._embedded?.['sw360:packages'].length
             setVisuallyHideLinkedData(false)
         }
         setInternalData(dataCount)
