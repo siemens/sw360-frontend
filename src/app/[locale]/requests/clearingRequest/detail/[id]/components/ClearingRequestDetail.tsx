@@ -12,18 +12,20 @@
 import styles from '@/app/[locale]/requests/requestDetail.module.css'
 import { ClearingRequestDetails, HttpStatus } from '@/object-types'
 import { ApiUtils, CommonUtils } from '@/utils/index'
-import { getSession, signOut } from 'next-auth/react'
+import { getSession, signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { ShowInfoOnHover } from 'next-sw360'
 import dynamic from 'next/dynamic'
 import { notFound, useRouter } from 'next/navigation'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, ReactNode } from 'react'
 import { Button, Card, Col, Collapse, Row, Tab } from 'react-bootstrap'
 import ReopenClosedClearingRequestModal from '../../../edit/[id]/components/ReopenClosedClearingRequestModal'
 import ClearingDecision from './ClearingDecision'
 import ClearingRequestInfo from './ClearingRequestInfo'
+import Link from 'next/link'
 
-function ClearingRequestDetail({ clearingRequestId }: { clearingRequestId: string }) {
+function ClearingRequestDetail({ clearingRequestId }: { clearingRequestId: string }): ReactNode | undefined {
+
     const t = useTranslations('default')
     const [openCardIndex, setOpenCardIndex] = useState<number>(0)
     const router = useRouter()
@@ -47,12 +49,13 @@ function ClearingRequestDetail({ clearingRequestId }: { clearingRequestId: strin
         createdOn: '',
         comments: [{}],
     })
+    const { status } = useSession()
 
     const ClearingComments = dynamic(() => import('./ClearingComments'), {
         ssr: false,
     })
 
-    const fetchData = useCallback(async (url: string) => {
+    const fetchData = async (url: string) => {
         const session = await getSession()
         if (CommonUtils.isNullOrUndefined(session)) return signOut()
         const response = await ApiUtils.GET(url, session.user.access_token)
@@ -64,7 +67,7 @@ function ClearingRequestDetail({ clearingRequestId }: { clearingRequestId: strin
         } else {
             notFound()
         }
-    }, [])
+    }
 
     useEffect(() => {
         if (!toastShownRef.current) {
@@ -85,7 +88,7 @@ function ClearingRequestDetail({ clearingRequestId }: { clearingRequestId: strin
                 setClearingRequestData(clearingRequestDetails)
             },
         )
-    }, [fetchData])
+    }, [])
 
     const handleEditClearingRequest = (requestId: string | undefined) => {
         router.push(`/requests/clearingRequest/edit/${requestId}`)
@@ -162,14 +165,15 @@ function ClearingRequestDetail({ clearingRequestId }: { clearingRequestId: strin
                                                         ) : (
                                                             <>
                                                                 {t('Clearing Request Information For Project') + ` `}
-                                                                <a
-                                                                    href={`/projects/detail/${clearingRequestData?.projectId}`}
-                                                                    className='text-link'
-                                                                >
-                                                                    {clearingRequestData?._embedded?.['sw360:project']
-                                                                        ?.name +
-                                                                        `(${clearingRequestData?._embedded?.['sw360:project']?.version})`}
-                                                                </a>
+                                                                {
+                                                                    clearingRequestData?._embedded !== undefined &&
+                                                                    <Link
+                                                                        href={`/projects/detail/${clearingRequestData.projectId}`}
+                                                                        className='text-link'
+                                                                    >
+                                                                        {`${clearingRequestData._embedded['sw360:project']?.name ?? ''}(${clearingRequestData._embedded['sw360:project']?.version ?? ''})`}
+                                                                    </Link>
+                                                                }
                                                             </>
                                                         )}
                                                     </div>
@@ -215,7 +219,7 @@ function ClearingRequestDetail({ clearingRequestId }: { clearingRequestId: strin
                                                 >
                                                     {t('Clearing Request Comments') +
                                                         ' ' +
-                                                        `(${clearingRequestData?.comments?.length})`}
+                                                        `(${clearingRequestData?.comments?.length ?? 0})`}
                                                 </Button>
                                             </Card.Header>
                                         </div>
