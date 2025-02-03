@@ -13,7 +13,7 @@ import AccessToken from './AccessToken'
 import AddtionalDataType from './AddtionalDataType'
 import AdministrationDataType from './AdministrationDataType'
 import Attachment from './Attachment'
-import { AttachmentUsage, AttachmentUsages } from './AttachmentUsages'
+import { AttachmentUsage, AttachmentUsages, SaveUsagesPayload } from './AttachmentUsages'
 import AuthToken from './AuthToken'
 import COTSDetails from './COTSDetails'
 import CVEReference from './CVEReference'
@@ -37,7 +37,6 @@ import LicensePayload from './LicensePayload'
 import LicenseType from './LicenseType'
 import LinkedAttachments from './LinkedAttachments'
 import LinkedProjectData from './LinkedProjectData'
-import LinkedPackage from './LinkedPackage'
 import LinkedPackageData from './LinkedPackageData'
 import LinkedRelease from './LinkedRelease'
 import LinkedReleaseData from './LinkedReleaseData'
@@ -136,7 +135,6 @@ export type {
     LicensePayload,
     LicenseType,
     LinkedAttachments,
-    LinkedPackage,
     LinkedPackageData,
     LinkedProjectData,
     LinkedRelease,
@@ -195,6 +193,7 @@ export type {
     Vulnerability,
     VulnerabilityRatingAndActionPayload,
     VulnerabilityTrackingStatus,
+    SaveUsagesPayload
 }
 
 // Special functions for populate data
@@ -211,7 +210,6 @@ import ActionType from './enums/ActionType'
 import ClearingRequestStates from './enums/ClearingRequestStates'
 import DocumentTypes from './enums/DocumentTypes'
 import ProjectVulnerabilityTabType from './enums/ProjectVulnerabilityTabType'
-import ReleaseClearingStateMapping from './enums/ReleaseClearingStateMapping'
 import RequestDocumentTypes from './enums/RequestDocumentTypes'
 import UserGroupType from './enums/UserGroupType'
 import VulnerabilitiesVerificationState from './enums/VulnerabilitiesVerificationState'
@@ -226,7 +224,6 @@ export {
     HttpStatus,
     LicenseTabIds,
     ProjectVulnerabilityTabType,
-    ReleaseClearingStateMapping,
     ReleaseTabIds,
     RequestDocumentTypes,
     UserGroupType,

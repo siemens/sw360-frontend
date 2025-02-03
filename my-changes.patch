@@ -1,0 +1,1420 @@
+diff --git a/.github/workflows/build.yml b/.github/workflows/build.yml
+index bcb9d7e1..eca14bff 100644
+--- a/.github/workflows/build.yml
++++ b/.github/workflows/build.yml
+@@ -38,7 +38,7 @@ jobs:
+           version: 8
+ 
+       - name: Setup Node
+-        uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
++        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
+         with:
+           node-version: '22'
+           cache: 'pnpm'
+diff --git a/.github/workflows/codeql.yml b/.github/workflows/codeql.yml
+index 6c142b87..52c4ad8e 100644
+--- a/.github/workflows/codeql.yml
++++ b/.github/workflows/codeql.yml
+@@ -66,7 +66,7 @@ jobs:
+ 
+             # Initializes the CodeQL tools for scanning.
+             - name: Initialize CodeQL
+-              uses: github/codeql-action/init@f6091c0113d1dcf9b98e269ee48e8a7e51b7bdd4 # v3.28.5
++              uses: github/codeql-action/init@df409f7d9260372bd5f19e5b04e83cb3c43714ae # v3.27.9
+               with:
+                   languages: ${{ matrix.language }}
+                   build-mode: ${{ matrix.build-mode }}
+@@ -94,6 +94,6 @@ jobs:
+                   exit 1
+ 
+             - name: Perform CodeQL Analysis
+-              uses: github/codeql-action/analyze@f6091c0113d1dcf9b98e269ee48e8a7e51b7bdd4 # v3.28.5
++              uses: github/codeql-action/analyze@df409f7d9260372bd5f19e5b04e83cb3c43714ae # v3.27.9
+               with:
+                   category: '/language:${{matrix.language}}'
+diff --git a/.github/workflows/docker_deploy.yml b/.github/workflows/docker_deploy.yml
+index ffc3a1a7..f21954a8 100644
+--- a/.github/workflows/docker_deploy.yml
++++ b/.github/workflows/docker_deploy.yml
+@@ -67,7 +67,7 @@ jobs:
+             ${{ env.REGISTRY }}/${{ env.ORG_BASE_NAME }}
+ 
+       - name: Build sw360 build container
+-        uses: docker/build-push-action@ca877d9245402d1537745e0e356eab47c3520991 # v6.13.0
++        uses: docker/build-push-action@67a2d409c0a876cbe6b11854e3e25193efe4e62d # v6.12.0
+         with:
+           context: .
+           push: true
+diff --git a/.github/workflows/scorecard.yml b/.github/workflows/scorecard.yml
+index 12750e63..a64b0b86 100644
+--- a/.github/workflows/scorecard.yml
++++ b/.github/workflows/scorecard.yml
+@@ -55,6 +55,6 @@ jobs:
+           retention-days: 5
+ 
+       - name: "Upload to code-scanning"
+-        uses: github/codeql-action/upload-sarif@f6091c0113d1dcf9b98e269ee48e8a7e51b7bdd4 # v3.28.5
++        uses: github/codeql-action/upload-sarif@df409f7d9260372bd5f19e5b04e83cb3c43714ae # v3.27.9
+         with:
+           sarif_file: results.sarif
+diff --git a/messages/de.json b/messages/de.json
+index be051d6a..15afd6d1 100644
+--- a/messages/de.json
++++ b/messages/de.json
+@@ -763,7 +763,6 @@
+     "PTC Integrity": "TEIL Integrität",
+     "Package Manager": "Paket-Manager",
+     "Package Name": "Paketnamen",
+-    "Package Name Version": "Paketname (Version)",
+     "Package Type": "Pakettyp",
+     "Package URL": "Paket-URL",
+     "Package Version": "Paketversion",
+@@ -864,7 +863,6 @@
+     "Release Date of this Release": "Veröffentlichungsdatum dieser Veröffentlichung",
+     "Release Mainline State": "Release Mainline State",
+     "Release Name": "Release-Name",
+-    "Release Name Version": "Releasename (Version)",
+     "Release Overview": "Über uns",
+     "Release Path": "Release-Pfad",
+     "Release Relation": "",
+diff --git a/messages/en.json b/messages/en.json
+index 2ca6d914..f2cdadb5 100644
+--- a/messages/en.json
++++ b/messages/en.json
+@@ -763,7 +763,6 @@
+     "PTC Integrity": "PTC Integrity",
+     "Package Manager": "Package Manager",
+     "Package Name": "Package Name",
+-    "Package Name Version": "Package Name (Version)",
+     "Package Type": "Package Type",
+     "Package URL": "Package URL",
+     "Package Version": "Package Version",
+@@ -864,7 +863,6 @@
+     "Release Date of this Release": "Release Date of this Release",
+     "Release Mainline State": "Release Mainline State",
+     "Release Name": "Release Name",
+-    "Release Name Version": "Release Name (Version)",
+     "Release Overview": "Release Overview",
+     "Release Path": "Release Path",
+     "Release Relation": "Release Relation",
+diff --git a/messages/es.json b/messages/es.json
+index 3d77b952..dbdf2d5c 100644
+--- a/messages/es.json
++++ b/messages/es.json
+@@ -763,7 +763,6 @@
+     "PTC Integrity": "PTC Integridad",
+     "Package Manager": "Gerente de empaquetación",
+     "Package Name": "Nombre del paquete",
+-    "Package Name Version": "Nombre del paquete (versión)",
+     "Package Type": "Tipo de paquete",
+     "Package URL": "URL del paquete",
+     "Package Version": "Versión del paquete",
+@@ -864,7 +863,6 @@
+     "Release Date of this Release": "Fecha de lanzamiento de este comunicado",
+     "Release Mainline State": "Estado de la liberación",
+     "Release Name": "Nombre de la versión",
+-    "Release Name Version": "Nombre de la versión (versión)",
+     "Release Overview": "Sinopsis de liberación",
+     "Release Path": "Ruta de lanzamiento",
+     "Release Relation": "",
+diff --git a/messages/fr.json b/messages/fr.json
+index 3de24008..4452f08d 100644
+--- a/messages/fr.json
++++ b/messages/fr.json
+@@ -763,7 +763,6 @@
+     "PTC Integrity": "PTC Intégrité",
+     "Package Manager": "Directeur chargé d'emballage",
+     "Package Name": "",
+-    "Package Name Version": "Nom du package (version)",
+     "Package Type": "Type d'emballage",
+     "Package URL": "URL du package",
+     "Package Version": "Version du paquet",
+@@ -864,7 +863,6 @@
+     "Release Date of this Release": "Date de sortie",
+     "Release Mainline State": "État principal de libération",
+     "Release Name": "Nom de la version",
+-    "Release Name Version": "Nom de la version (version)",
+     "Release Overview": "Aperçu de la publication",
+     "Release Path": "Chemin de sortie",
+     "Release Relation": "",
+diff --git a/messages/ja.json b/messages/ja.json
+index c28b77de..89ad9796 100644
+--- a/messages/ja.json
++++ b/messages/ja.json
+@@ -763,7 +763,6 @@
+     "PTC Integrity": "PTC インテグリティ",
+     "Package Manager": "パッケージマネージャー",
+     "Package Name": "パッケージ名",
+-    "Package Name Version": "パッケージ名（バージョン）",
+     "Package Type": "パッケージ型式",
+     "Package URL": "パッケージURL",
+     "Package Version": "パッケージバージョン",
+@@ -864,7 +863,6 @@
+     "Release Date of this Release": "本リリースの公開日",
+     "Release Mainline State": "リリースメインライン状態",
+     "Release Name": "リリース名",
+-    "Release Name Version": "リリース名（バージョン）",
+     "Release Overview": "リリース概要",
+     "Release Path": "リリースパス",
+     "Release Relation": "",
+diff --git a/messages/ko.json b/messages/ko.json
+index 6198a20f..ccdb3199 100644
+--- a/messages/ko.json
++++ b/messages/ko.json
+@@ -763,7 +763,6 @@
+     "PTC Integrity": "PTC 정보 이름 *",
+     "Package Manager": "패키지 관리자",
+     "Package Name": "패키지 이름",
+-    "Package Name Version": "패키지 이름(버전)",
+     "Package Type": "포장 종류",
+     "Package URL": "패키지 URL",
+     "Package Version": "패키지 버전",
+@@ -864,7 +863,6 @@
+     "Release Date of this Release": "출시 날짜",
+     "Release Mainline State": "메인 라인 상태",
+     "Release Name": "릴리스 이름",
+-    "Release Name Version": "릴리스 이름(버전)",
+     "Release Overview": "공지사항",
+     "Release Path": "릴리스 경로",
+     "Release Relation": "",
+diff --git a/messages/pt-BR.json b/messages/pt-BR.json
+index e9b47c37..fea34b6f 100644
+--- a/messages/pt-BR.json
++++ b/messages/pt-BR.json
+@@ -763,7 +763,6 @@
+     "PTC Integrity": "Integridade PTC",
+     "Package Manager": "Gerenciador de pacotes",
+     "Package Name": "Nome do pacote",
+-    "Package Name Version": "Nome do pacote (versão)",
+     "Package Type": "Tipo de pacote",
+     "Package URL": "URL do pacote",
+     "Package Version": "Versão do pacote",
+@@ -864,7 +863,6 @@
+     "Release Date of this Release": "Data de release desta versão",
+     "Release Mainline State": "Liberar estado da linha principal",
+     "Release Name": "Nome da versão",
+-    "Release Name Version": "Nome da versão (versão)",
+     "Release Overview": "Visão geral da versão",
+     "Release Path": "Caminho de lançamento",
+     "Release Relation": "",
+diff --git a/messages/vi.json b/messages/vi.json
+index c4b46c0e..65f761e2 100644
+--- a/messages/vi.json
++++ b/messages/vi.json
+@@ -763,7 +763,6 @@
+     "PTC Integrity": "Tính toàn vẹn của PTC",
+     "Package Manager": "Trình quản lý gói",
+     "Package Name": "Tên gói hàng",
+-    "Package Name Version": "Tên gói (Phiên bản)",
+     "Package Type": "Loại gói",
+     "Package URL": "URL gói",
+     "Package Version": "Phiên bản gói",
+@@ -864,7 +863,6 @@
+     "Release Date of this Release": "Ngày phát hành của bản phát hành này",
+     "Release Mainline State": "Phát hành trạng thái tuyến chính",
+     "Release Name": "Tên phát hành",
+-    "Release Name Version": "Tên phát hành (Phiên bản)",
+     "Release Overview": "Tổng quan về bản phát hành",
+     "Release Path": "Đường dẫn phát hành",
+     "Release Relation": "",
+diff --git a/messages/zh-CN.json b/messages/zh-CN.json
+index 448da7c1..1b3990c8 100644
+--- a/messages/zh-CN.json
++++ b/messages/zh-CN.json
+@@ -763,7 +763,6 @@
+     "PTC Integrity": "PTC 诚信",
+     "Package Manager": "包管理器",
+     "Package Name": "包裹名字",
+-    "Package Name Version": "包名称（版本）",
+     "Package Type": "包装类型",
+     "Package URL": "包网址",
+     "Package Version": "套餐版本",
+@@ -864,7 +863,6 @@
+     "Release Date of this Release": "本版本的发布日期",
+     "Release Mainline State": "发布主线状态",
+     "Release Name": "发布名称",
+-    "Release Name Version": "发布名称（版本）",
+     "Release Overview": "发布概述",
+     "Release Path": "发布路径",
+     "Release Relation": "",
+diff --git a/messages/zh-TW.json b/messages/zh-TW.json
+index 6a886a9a..4fc42115 100644
+--- a/messages/zh-TW.json
++++ b/messages/zh-TW.json
+@@ -763,7 +763,6 @@
+     "PTC Integrity": "PTC 廉洁",
+     "Package Manager": "套件管理器",
+     "Package Name": "包裹名字",
+-    "Package Name Version": "套件名稱（版本）",
+     "Package Type": "包裝類型",
+     "Package URL": "包網址",
+     "Package Version": "套餐版本",
+@@ -864,7 +863,6 @@
+     "Release Date of this Release": "此放行日期",
+     "Release Mainline State": "釋放主線狀態",
+     "Release Name": "發布名稱",
+-    "Release Name Version": "發布名稱（版本）",
+     "Release Overview": "釋放概述",
+     "Release Path": "發布路徑",
+     "Release Relation": "",
+diff --git a/package.json b/package.json
+index 57289ed8..d373aa39 100644
+--- a/package.json
++++ b/package.json
+@@ -15,7 +15,7 @@
+     "classnames": "^2.3.2",
+     "crypto-js": "^4.2.0",
+     "dotenv": "^16.4.7",
+-    "flag-icons": "^7.3.2",
++    "flag-icons": "^7.2.3",
+     "gridjs": "^6.2.0",
+     "html-react-parser": "^5.2.2",
+     "jwt-decode": "^4.0.0",
+@@ -24,7 +24,7 @@
+     "next-intl": "^3.26.3",
+     "preact": "^10.25.4",
+     "react": "^18.2.0",
+-    "react-bootstrap": "^2.10.8",
++    "react-bootstrap": "^2.10.1",
+     "react-cookie": "^7.0.1",
+     "react-dom": "^18.2.0",
+     "rxjs": "^7.8.1"
+@@ -54,13 +54,13 @@
+     "eslint-plugin-prettier": "^5.2.3",
+     "eslint-plugin-simple-import-sort": "^10.0.0",
+     "husky": "^9.1.7",
+-    "lint-staged": "^15.4.3",
++    "lint-staged": "^15.3.0",
+     "prettier": "^3.4.1",
+     "prettier-plugin-organize-imports": "^4.1.0",
+     "react-icons": "^5.4.0",
+     "stylelint": "^16.13.1",
+     "stylelint-config-clean-order": "^7.0.0",
+-    "stylelint-config-standard": "^37.0.0",
++    "stylelint-config-standard": "^36.0.0",
+     "stylelint-prettier": "^5.0.2",
+     "ts-node": "^10.9.2",
+     "tsc-files": "^1.1.4",
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index 8528343c..258b2454 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -18,8 +18,8 @@ importers:
+         specifier: ^16.4.7
+         version: 16.4.7
+       flag-icons:
+-        specifier: ^7.3.2
+-        version: 7.3.2
++        specifier: ^7.2.3
++        version: 7.2.3
+       gridjs:
+         specifier: ^6.2.0
+         version: 6.2.0
+@@ -45,8 +45,8 @@ importers:
+         specifier: ^18.2.0
+         version: 18.3.1
+       react-bootstrap:
+-        specifier: ^2.10.8
+-        version: 2.10.8(@types/react@18.3.17)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
++        specifier: ^2.10.1
++        version: 2.10.7(@types/react@18.3.17)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+       react-cookie:
+         specifier: ^7.0.1
+         version: 7.2.2(react@18.3.1)
+@@ -127,8 +127,8 @@ importers:
+         specifier: ^9.1.7
+         version: 9.1.7
+       lint-staged:
+-        specifier: ^15.4.3
+-        version: 15.4.3
++        specifier: ^15.3.0
++        version: 15.3.0
+       prettier:
+         specifier: ^3.4.1
+         version: 3.4.2
+@@ -145,8 +145,8 @@ importers:
+         specifier: ^7.0.0
+         version: 7.0.0(stylelint@16.13.1(typescript@5.7.3))
+       stylelint-config-standard:
+-        specifier: ^37.0.0
+-        version: 37.0.0(stylelint@16.13.1(typescript@5.7.3))
++        specifier: ^36.0.0
++        version: 36.0.1(stylelint@16.13.1(typescript@5.7.3))
+       stylelint-prettier:
+         specifier: ^5.0.2
+         version: 5.0.2(prettier@3.4.2)(stylelint@16.13.1(typescript@5.7.3))
+@@ -174,10 +174,6 @@ packages:
+     resolution: {integrity: sha512-FDSOghenHTiToteC/QRlv2q3DhPZ/oOXTBoirfWNx1Cx3TMVcGWQtMMmQcSvb/JjpNeGzx8Pq/b4fKEJuWm1sw==}
+     engines: {node: '>=6.9.0'}
+ 
+-  '@babel/runtime@7.26.7':
+-    resolution: {integrity: sha512-AOPI3D+a8dXnja+iwsUqGRjr1BbZIe771sXdapOtYI531gSqpi92vXivKcq2asu/DFpdl1ceFAKZyRzK2PCVcQ==}
+-    engines: {node: '>=6.9.0'}
+-
+   '@colors/colors@1.5.0':
+     resolution: {integrity: sha512-ooWCrlZP11i8GImSjTHYHLkvFDP48nS4+204nGb1RiX/WXYHmJA2III9/e2DWVabCESdW7hBAEzHRqUn9OUVvQ==}
+     engines: {node: '>=0.1.90'}
+@@ -521,13 +517,13 @@ packages:
+     peerDependencies:
+       react: '>=16.8.0'
+ 
+-  '@restart/hooks@0.5.1':
+-    resolution: {integrity: sha512-EMoH04NHS1pbn07iLTjIjgttuqb7qu4+/EyhAx27MHpoENcB2ZdSsLTNxmKD+WEPnZigo62Qc8zjGnNxoSE/5Q==}
++  '@restart/hooks@0.5.0':
++    resolution: {integrity: sha512-wS+h6IusJCPjTkmOOrRZxIPICD/mtFA3PRZviutoM23/b7akyDGfZF/WS+nIFk27u7JDhPE2+0GBdZxjSqHZkg==}
+     peerDependencies:
+       react: '>=16.8.0'
+ 
+-  '@restart/ui@1.9.3':
+-    resolution: {integrity: sha512-2QwCC42ISRAu7nafKeO4khG1F65Xfu2n+cwQT30Ck5bxszKDXuT2AZMDIX2auXxHRednG2ynr8ffSA1fRrkOGg==}
++  '@restart/ui@1.9.2':
++    resolution: {integrity: sha512-MWWqJqSyqUWWPBOOiRQrX57CBc/9CoYONg7sE+uag72GCAuYrHGU5c49vU5s4BUSBgiKNY6rL7TULqGDrouUaA==}
+     peerDependencies:
+       react: '>=16.14.0'
+       react-dom: '>=16.14.0'
+@@ -946,6 +942,10 @@ packages:
+     resolution: {integrity: sha512-oKnbhFyRIXpUuez8iBMmyEa4nbj4IOQyuhc/wy9kY7/WVPcwIO9VA668Pu8RkO7+0G76SLROeyw9CpQ061i4mA==}
+     engines: {node: '>=10'}
+ 
++  chalk@5.3.0:
++    resolution: {integrity: sha512-dLitG79d+GV1Nb/VYcCDFivJeK1hiukt9QjRNVOsUtTy1rR1YJsmpGGTZ3qJos+uw7WmWF4wUwBd9jxjocFC2w==}
++    engines: {node: ^12.17.0 || ^14.13 || >=16.0.0}
++
+   chalk@5.4.1:
+     resolution: {integrity: sha512-zgVZuo2WcZgfUEmsn6eO3kINexW8RAE4maiQ8QNs8CtpPCSyMiYsULR3HQYkm3w8FIA3SberyMJMSldGsW+U3w==}
+     engines: {node: ^12.17.0 || ^14.13 || >=16.0.0}
+@@ -1009,8 +1009,8 @@ packages:
+     resolution: {integrity: sha512-FQN4MRfuJeHf7cBbBMJFXhKSDq+2kAArBlmRBvcvFE5BB1HZKXtSFASDhdlz9zOYwxh8lDdnvmMOe/+5cdoEdg==}
+     engines: {node: '>= 0.8'}
+ 
+-  commander@13.1.0:
+-    resolution: {integrity: sha512-/rFeCpNJQbhSZjGVwO9RFV3xPqbnERS8MmIQzCtD/zl6gpJuV/bMLuN92oG3F7d8oDEHHRrujSXNUr8fpjntKw==}
++  commander@12.1.0:
++    resolution: {integrity: sha512-Vw8qHK3bZM9y/P10u3Vib8o/DdkvA2OtPtZvD871QKjy74Wj1WSKFILMPRPSdUSx5RFK1arlJzEtA4PkFgnbuA==}
+     engines: {node: '>=18'}
+ 
+   commander@6.2.1:
+@@ -1599,8 +1599,8 @@ packages:
+     resolution: {integrity: sha512-YyZM99iHrqLKjmt4LJDj58KI+fYyufRLBSYcqycxf//KpBk9FoewoGX0450m9nB44qrZnovzC2oeP5hUibxc/g==}
+     engines: {node: '>=18'}
+ 
+-  flag-icons@7.3.2:
+-    resolution: {integrity: sha512-QkaZ6Zvai8LIjx+UNAHUJ5Dhz9OLZpBDwCRWxF6YErxIcR16jTkIFm3bFu54EkvKQy4+wicW+Gm7/0631wVQyQ==}
++  flag-icons@7.2.3:
++    resolution: {integrity: sha512-X2gUdteNuqdNqob2KKTJTS+ZCvyWeLCtDz9Ty8uJP17Y4o82Y+U/Vd4JNrdwTAjagYsRznOn9DZ+E/Q52qbmqg==}
+ 
+   flat-cache@3.2.0:
+     resolution: {integrity: sha512-CYcENa+FtcUKLmhhqyctpclsq7QF38pKjZHsGNiSQF5r4FtoKDWabFDl3hzaEQMvT1LHEysw5twgLvpYYb4vbw==}
+@@ -2188,8 +2188,8 @@ packages:
+   lines-and-columns@1.2.4:
+     resolution: {integrity: sha512-7ylylesZQ/PV29jhEDl3Ufjo6ZX7gCqJr5F7PKrqc93v7fzSymt1BpwEU8nAUXs8qzzvqhbjhK5QZg6Mt/HkBg==}
+ 
+-  lint-staged@15.4.3:
+-    resolution: {integrity: sha512-FoH1vOeouNh1pw+90S+cnuoFwRfUD9ijY2GKy5h7HS3OR7JVir2N2xrsa0+Twc1B7cW72L+88geG5cW4wIhn7g==}
++  lint-staged@15.3.0:
++    resolution: {integrity: sha512-vHFahytLoF2enJklgtOtCtIjZrKD/LoxlaUusd5nh7dWv/dkKQJY74ndFSzxCdv7g0ueGg1ORgTSt4Y9LPZn9A==}
+     engines: {node: '>=18.12.0'}
+     hasBin: true
+ 
+@@ -2712,8 +2712,8 @@ packages:
+     resolution: {integrity: sha512-ARhCpm70fzdcvNQfPoy49IaanKkTlRWF2JMzqhcJbhSFRZv7nPTvZJdcY7301IPmvW+/p0RgIWnQDLJxifsQ7g==}
+     engines: {node: '>=8'}
+ 
+-  react-bootstrap@2.10.8:
+-    resolution: {integrity: sha512-Vw1B2QfGGsrcBge0HQt8rjhnw2syFbtlPQXl/50k/bAnA4Jwi9+Bd4aYYTa68oyBB2KXMtDbGy2oMGl7eSet9A==}
++  react-bootstrap@2.10.7:
++    resolution: {integrity: sha512-w6mWb3uytB5A18S2oTZpYghcOUK30neMBBvZ/bEfA+WIF2dF4OGqjzoFVMpVXBjtyf92gkmRToHlddiMAVhQqQ==}
+     peerDependencies:
+       '@types/react': '>=16.14.8'
+       react: '>=16.14.0'
+@@ -3079,17 +3079,17 @@ packages:
+     peerDependencies:
+       stylelint: '>=14'
+ 
+-  stylelint-config-recommended@15.0.0:
+-    resolution: {integrity: sha512-9LejMFsat7L+NXttdHdTq94byn25TD+82bzGRiV1Pgasl99pWnwipXS5DguTpp3nP1XjvLXVnEJIuYBfsRjRkA==}
++  stylelint-config-recommended@14.0.1:
++    resolution: {integrity: sha512-bLvc1WOz/14aPImu/cufKAZYfXs/A/owZfSMZ4N+16WGXLoX5lOir53M6odBxvhgmgdxCVnNySJmZKx73T93cg==}
+     engines: {node: '>=18.12.0'}
+     peerDependencies:
+-      stylelint: ^16.13.0
++      stylelint: ^16.1.0
+ 
+-  stylelint-config-standard@37.0.0:
+-    resolution: {integrity: sha512-+6eBlbSTrOn/il2RlV0zYGQwRTkr+WtzuVSs1reaWGObxnxLpbcspCUYajVQHonVfxVw2U+h42azGhrBvcg8OA==}
++  stylelint-config-standard@36.0.1:
++    resolution: {integrity: sha512-8aX8mTzJ6cuO8mmD5yon61CWuIM4UD8Q5aBcWKGSf6kg+EC3uhB+iOywpTK4ca6ZL7B49en8yanOFtUW0qNzyw==}
+     engines: {node: '>=18.12.0'}
+     peerDependencies:
+-      stylelint: ^16.13.0
++      stylelint: ^16.1.0
+ 
+   stylelint-order@6.0.4:
+     resolution: {integrity: sha512-0UuKo4+s1hgQ/uAxlYU4h0o0HS4NiQDud0NAUNI0aa8FJdmYHA5ZZTFHiV5FpmE3071e9pZx5j0QpVJW5zOCUA==}
+@@ -3412,8 +3412,8 @@ packages:
+   yallist@4.0.0:
+     resolution: {integrity: sha512-3wdGidZyq5PB084XLES5TpOSRA3wjXAlIWMhum2kRcv/41Sn2emQ0dycQW4uZXLejwKvg6EsvbdlVL+FYEct7A==}
+ 
+-  yaml@2.7.0:
+-    resolution: {integrity: sha512-+hSoy/QHluxmC9kCIJyL/uyFmLmc+e5CFR5Wa+bpIhIj85LVb9ZH2nVnqrHoSvKogwODv0ClqZkmiSSaIH5LTA==}
++  yaml@2.6.1:
++    resolution: {integrity: sha512-7r0XPzioN/Q9kXBro/XPnA6kznR73DHq+GXh5ON7ZozRO6aMjbmiBuKste2wslTFkC5d1dw0GooOCepZXJ2SAg==}
+     engines: {node: '>= 14'}
+     hasBin: true
+ 
+@@ -3458,10 +3458,6 @@ snapshots:
+     dependencies:
+       regenerator-runtime: 0.14.1
+ 
+-  '@babel/runtime@7.26.7':
+-    dependencies:
+-      regenerator-runtime: 0.14.1
+-
+   '@colors/colors@1.5.0':
+     optional: true
+ 
+@@ -3539,7 +3535,7 @@ snapshots:
+   '@commitlint/format@19.5.0':
+     dependencies:
+       '@commitlint/types': 19.5.0
+-      chalk: 5.4.1
++      chalk: 5.3.0
+ 
+   '@commitlint/is-ignored@17.8.1':
+     dependencies:
+@@ -3591,7 +3587,7 @@ snapshots:
+       '@commitlint/execute-rule': 19.5.0
+       '@commitlint/resolve-extends': 19.5.0
+       '@commitlint/types': 19.5.0
+-      chalk: 5.4.1
++      chalk: 5.3.0
+       cosmiconfig: 9.0.0(typescript@5.7.3)
+       cosmiconfig-typescript-loader: 6.1.0(@types/node@22.10.5)(cosmiconfig@9.0.0(typescript@5.7.3))(typescript@5.7.3)
+       lodash.isplainobject: 4.0.6
+@@ -3689,7 +3685,7 @@ snapshots:
+   '@commitlint/types@19.5.0':
+     dependencies:
+       '@types/conventional-commits-parser': 5.0.1
+-      chalk: 5.4.1
++      chalk: 5.3.0
+ 
+   '@cspotcode/source-map-support@0.8.1':
+     dependencies:
+@@ -3887,17 +3883,17 @@ snapshots:
+       dequal: 2.0.3
+       react: 18.3.1
+ 
+-  '@restart/hooks@0.5.1(react@18.3.1)':
++  '@restart/hooks@0.5.0(react@18.3.1)':
+     dependencies:
+       dequal: 2.0.3
+       react: 18.3.1
+ 
+-  '@restart/ui@1.9.3(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
++  '@restart/ui@1.9.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+     dependencies:
+-      '@babel/runtime': 7.26.7
++      '@babel/runtime': 7.26.0
+       '@popperjs/core': 2.11.8
+       '@react-aria/ssr': 3.9.7(react@18.3.1)
+-      '@restart/hooks': 0.5.1(react@18.3.1)
++      '@restart/hooks': 0.5.0(react@18.3.1)
+       '@types/warning': 3.0.3
+       dequal: 2.0.3
+       dom-helpers: 5.2.1
+@@ -4354,6 +4350,8 @@ snapshots:
+       ansi-styles: 4.3.0
+       supports-color: 7.2.0
+ 
++  chalk@5.3.0: {}
++
+   chalk@5.4.1: {}
+ 
+   check-more-types@2.24.0: {}
+@@ -4410,7 +4408,7 @@ snapshots:
+     dependencies:
+       delayed-stream: 1.0.0
+ 
+-  commander@13.1.0: {}
++  commander@12.1.0: {}
+ 
+   commander@6.2.1: {}
+ 
+@@ -4665,7 +4663,7 @@ snapshots:
+ 
+   dom-helpers@5.2.1:
+     dependencies:
+-      '@babel/runtime': 7.26.7
++      '@babel/runtime': 7.26.0
+       csstype: 3.1.3
+ 
+   dom-serializer@2.0.0:
+@@ -5256,7 +5254,7 @@ snapshots:
+       path-exists: 5.0.0
+       unicorn-magic: 0.1.0
+ 
+-  flag-icons@7.3.2: {}
++  flag-icons@7.2.3: {}
+ 
+   flat-cache@3.2.0:
+     dependencies:
+@@ -5846,10 +5844,10 @@ snapshots:
+ 
+   lines-and-columns@1.2.4: {}
+ 
+-  lint-staged@15.4.3:
++  lint-staged@15.3.0:
+     dependencies:
+       chalk: 5.4.1
+-      commander: 13.1.0
++      commander: 12.1.0
+       debug: 4.4.0(supports-color@8.1.1)
+       execa: 8.0.1
+       lilconfig: 3.1.3
+@@ -5857,7 +5855,7 @@ snapshots:
+       micromatch: 4.0.8
+       pidtree: 0.6.0
+       string-argv: 0.3.2
+-      yaml: 2.7.0
++      yaml: 2.6.1
+     transitivePeerDependencies:
+       - supports-color
+ 
+@@ -6357,11 +6355,11 @@ snapshots:
+ 
+   quick-lru@4.0.1: {}
+ 
+-  react-bootstrap@2.10.8(@types/react@18.3.17)(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
++  react-bootstrap@2.10.7(@types/react@18.3.17)(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
+     dependencies:
+-      '@babel/runtime': 7.26.7
++      '@babel/runtime': 7.26.0
+       '@restart/hooks': 0.4.16(react@18.3.1)
+-      '@restart/ui': 1.9.3(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
++      '@restart/ui': 1.9.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+       '@types/prop-types': 15.7.14
+       '@types/react-transition-group': 4.4.12(@types/react@18.3.17)
+       classnames: 2.5.1
+@@ -6402,7 +6400,7 @@ snapshots:
+ 
+   react-transition-group@4.4.5(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
+     dependencies:
+-      '@babel/runtime': 7.26.7
++      '@babel/runtime': 7.26.0
+       dom-helpers: 5.2.1
+       loose-envify: 1.4.0
+       prop-types: 15.8.1
+@@ -6798,14 +6796,14 @@ snapshots:
+       stylelint: 16.13.1(typescript@5.7.3)
+       stylelint-order: 6.0.4(stylelint@16.13.1(typescript@5.7.3))
+ 
+-  stylelint-config-recommended@15.0.0(stylelint@16.13.1(typescript@5.7.3)):
++  stylelint-config-recommended@14.0.1(stylelint@16.13.1(typescript@5.7.3)):
+     dependencies:
+       stylelint: 16.13.1(typescript@5.7.3)
+ 
+-  stylelint-config-standard@37.0.0(stylelint@16.13.1(typescript@5.7.3)):
++  stylelint-config-standard@36.0.1(stylelint@16.13.1(typescript@5.7.3)):
+     dependencies:
+       stylelint: 16.13.1(typescript@5.7.3)
+-      stylelint-config-recommended: 15.0.0(stylelint@16.13.1(typescript@5.7.3))
++      stylelint-config-recommended: 14.0.1(stylelint@16.13.1(typescript@5.7.3))
+ 
+   stylelint-order@6.0.4(stylelint@16.13.1(typescript@5.7.3)):
+     dependencies:
+@@ -7076,7 +7074,7 @@ snapshots:
+ 
+   uncontrollable@7.2.1(react@18.3.1):
+     dependencies:
+-      '@babel/runtime': 7.26.7
++      '@babel/runtime': 7.26.0
+       '@types/react': 18.3.17
+       invariant: 2.2.4
+       react: 18.3.1
+@@ -7219,7 +7217,7 @@ snapshots:
+ 
+   yallist@4.0.0: {}
+ 
+-  yaml@2.7.0: {}
++  yaml@2.6.1: {}
+ 
+   yargs-parser@20.2.9: {}
+ 
+diff --git a/src/app/[locale]/projects/detail/[id]/components/AttachmentUsages.tsx b/src/app/[locale]/projects/detail/[id]/components/AttachmentUsages.tsx
+index 2c8f5fe6..cefa268a 100644
+--- a/src/app/[locale]/projects/detail/[id]/components/AttachmentUsages.tsx
++++ b/src/app/[locale]/projects/detail/[id]/components/AttachmentUsages.tsx
+@@ -9,7 +9,7 @@
+ 
+ 'use client'
+ 
+-import { HttpStatus, NodeData, AttachmentUsages, Project, Release, Embedded, ProjectLinkedRelease, AttachmentUsage } from '@/object-types'
++import { HttpStatus, NodeData, AttachmentUsages, Project, Release, Embedded, ProjectLinkedRelease, AttachmentUsage, SaveUsagesPayload } from '@/object-types'
+ import { ApiUtils, CommonUtils } from '@/utils'
+ import { signOut, useSession, getSession } from 'next-auth/react'
+ import { useTranslations } from 'next-intl'
+@@ -22,13 +22,6 @@ import MessageService from '@/services/message.service'
+ 
+ type LinkedProjects = Embedded<Project, 'sw360:projects'>
+ 
+-interface SaveUsagesPayload {
+-    selected: string[]
+-    deselected: string[]
+-    selectedConcludedUsages: string[]
+-    deselectedConcludedUsages: string[]
+-}
+-
+ const Capitalize = (text: string) =>
+     text.split('_').reduce((s, c) => s + ' ' + (c.charAt(0) + c.substring(1).toLocaleLowerCase()), '')
+ 
+diff --git a/src/app/[locale]/projects/detail/[id]/components/ClearingStateBadge.tsx b/src/app/[locale]/projects/detail/[id]/components/ClearingStateBadge.tsx
+index a8c9650e..3cecc8cf 100644
+--- a/src/app/[locale]/projects/detail/[id]/components/ClearingStateBadge.tsx
++++ b/src/app/[locale]/projects/detail/[id]/components/ClearingStateBadge.tsx
+@@ -11,7 +11,6 @@
+ 'use client'
+ 
+ import { Tooltip, OverlayTrigger } from 'react-bootstrap'
+-import { ReleaseClearingStateMapping } from '@/object-types'
+ 
+ interface Props {
+     isRelease: boolean
+@@ -26,6 +25,18 @@ const capitalize = (text: string) => {
+         : ''
+ }
+ 
++const ReleaseClearingStateMapping: {[k: string]: string} = {
++    'NEW_CLEARING': 'NEW_CLEARING',
++    'APPROVED': 'REPORT_APPROVED',
++    'REPORT_AVAILABLE': 'REPORT_AVAILABLE',
++    'SCAN_AVAILABLE': 'SCAN_AVAILABLE',
++    'SENT_TO_CLEARING_TOOL': 'SENT_TO_CLEARING_TOOL',
++    'UNDER_CLEARING': 'UNDER_CLEARING',
++    'INTERNAL_USE_SCAN_AVAILABLE': 'INTERNAL_USE_SCAN_AVAILABLE',
++    'NEW': 'NEW_CLEARING',
++    'REPORT_APPROVED': 'REPORT_APPROVED',
++}
++
+ const ClearingStateBadge = ({ isRelease, clearingState, projectState, t }: Props) : JSX.Element => {
+ 
+     return (
+@@ -36,9 +47,7 @@ const ClearingStateBadge = ({ isRelease, clearingState, projectState, t }: Props
+                     <OverlayTrigger
+                         overlay={
+                             // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+-                            <Tooltip>{`${t('Release Clearing State')}: ${t(ReleaseClearingStateMapping[
+-                                clearingState as keyof typeof ReleaseClearingStateMapping])}`}
+-                            </Tooltip>
++                            <Tooltip>{`${t('Release Clearing State')}: ${t(ReleaseClearingStateMapping[clearingState])}`}</Tooltip>
+                         }
+                     >
+                         {(clearingState === 'NEW_CLEARING' || clearingState === 'NEW') ? (
+diff --git a/src/app/[locale]/projects/detail/[id]/components/LinkedPackagesTab.tsx b/src/app/[locale]/projects/detail/[id]/components/LinkedPackagesTab.tsx
+deleted file mode 100644
+index 1965454f..00000000
+--- a/src/app/[locale]/projects/detail/[id]/components/LinkedPackagesTab.tsx
++++ /dev/null
+@@ -1,233 +0,0 @@
+-// Copyright (C) Siemens AG, 2025. Part of the SW360 Frontend Project.
+-
+-// This program and the accompanying materials are made
+-// available under the terms of the Eclipse Public License 2.0
+-// which is available at https://www.eclipse.org/legal/epl-2.0/
+-
+-// SPDX-License-Identifier: EPL-2.0
+-// License-Filename: LICENSE
+-
+-'use client'
+-
+-import { _, Table } from '@/components/sw360'
+-import { Embedded, HttpStatus, LinkedPackage, ReleaseClearingStateMapping } from '@/object-types'
+-import CommonUtils from '@/utils/common.utils'
+-import { ApiUtils } from '@/utils/index'
+-import { getSession, signOut } from 'next-auth/react'
+-import { useTranslations } from 'next-intl'
+-import Link from 'next/link'
+-import { useCallback, useEffect, useState } from 'react'
+-import { OverlayTrigger, Tooltip } from 'react-bootstrap'
+-import { FaPencilAlt } from 'react-icons/fa'
+-
+-interface Props {
+-    projectId: string
+-}
+-
+-type EmbeddedLinkedPackages = Embedded<LinkedPackage, 'sw360:packages'>
+-
+-type RowData = (string | string[] | undefined)[]
+-
+-export default function LinkedPackagesTab({ projectId }: Props): JSX.Element {
+-
+-    const t = useTranslations('default')
+-    const [tableData, setTableData] = useState<Array<RowData>>([])
+-
+-    const columns = [
+-        {
+-            id: 'linkedPackagesData.vendor',
+-            name: t('Vendor'),
+-            sort: true,
+-            formatter: ([ vendorId, vendorName ]: Array<string>) =>
+-                _(
+-                    <>
+-                        <Link href={`/vendors/${vendorId}`}>
+-                            {vendorName}
+-                        </Link>
+-                    </>
+-                ),
+-        },
+-        {
+-            id: 'linkedPackagesData.packageName',
+-            name: t('Package Name Version'),
+-            sort: true,
+-            formatter: ([ packageId, packageName, packageVersion ]: Array<string>) =>
+-                _(
+-                    <>
+-                        <Link href={`/packages/detail/${packageId}`}>
+-                            {`${packageName} (${packageVersion})`}
+-                        </Link>
+-                    </>
+-                ),
+-        },
+-        {
+-            id: 'linkedPackagesData.releaseName',
+-            name: t('Release Name Version'),
+-            sort: true,
+-            formatter: ([ releaseId, releaseName, releaseVersion ]: Array<string>) =>
+-                _(
+-                    <>
+-                        <Link href={`/components/releases/detail/${releaseId}`}>
+-                            {`${releaseName} (${releaseVersion})`}
+-                        </Link>
+-                    </>
+-                ),
+-        },
+-        {
+-            id: 'linkedPackagesData.releaseClearingState',
+-            name: t('Release Clearing State'),
+-            sort: true,
+-            formatter : (releaseClearingState: string) => 
+-                _(
+-                    (releaseClearingState === "") ?
+-                        (
+-                            <>
+-                                {t('Not Applicable')}
+-                            </>
+-                        ) : (
+-                            <OverlayTrigger 
+-                                overlay={
+-                                    <Tooltip>{`${t('Release Clearing State')}: ${t(ReleaseClearingStateMapping[
+-                                        releaseClearingState as keyof typeof ReleaseClearingStateMapping])}`}
+-                                    </Tooltip>
+-                                }
+-                            >
+-                                {(releaseClearingState === 'NEW_CLEARING' || releaseClearingState === 'NEW') ? (
+-                                    <span className='state-box clearingStateOpen capsule-left capsule-right align-center'>
+-                                        {'CS'}
+-                                    </span>
+-                                ) : (releaseClearingState === 'REPORT_AVAILABLE') ? (
+-                                    <span className='state-box clearingStateReportAvailable capsule-left capsule-right'>
+-                                        {'CS'}
+-                                    </span>
+-                                ) : (releaseClearingState === 'UNDER_CLEARING') ? (
+-                                    <span className='state-box clearingStateInProgress capsule-left capsule-right'>
+-                                        {'CS'}
+-                                    </span>
+-                                ) : (releaseClearingState === 'INTERNAL_USE_SCAN_AVAILABLE') ? (
+-                                    <span className='state-box clearingStateUnknown capsule-left capsule-right'>
+-                                        {'CS'}
+-                                    </span>
+-                                ) : (releaseClearingState === 'SENT_TO_CLEARING_TOOL' ||
+-                                    releaseClearingState === 'SCAN_AVAILABLE') ? (
+-                                    <span className='state-box clearingStateSentToClearingTool capsule-left capsule-right'>
+-                                        {'CS'}
+-                                    </span>
+-                                ): (
+-                                    <span className='state-box clearingStateApproved capsule-left capsule-right'>
+-                                        {'CS'}
+-                                    </span>
+-                                )}
+-                            </OverlayTrigger>
+-                        )
+-                )
+-        },
+-        {
+-            id: 'linkedPackagesData.licenses',
+-            name: t('Licenses'),
+-            sort: true,
+-            formatter: (licenseIds: string[]) => _(
+-                <div>
+-                    {licenseIds.map((lincenseId, index) => (
+-                        <span key={index}>
+-                            <Link href={`/licenses/detail?id=${lincenseId}`}>
+-                                {lincenseId}
+-                            </Link>
+-                            {index !== licenseIds.length - 1 && ', '}
+-                        </span>
+-                    ))}
+-                </div>
+-            )
+-        },
+-        {
+-            id: 'linkedPackagesData.packageManager',
+-            name: t('Package Manager'),
+-            sort: true,
+-        },
+-        {
+-            id: 'linkedPackagesData.actions',
+-            name: t('Actions'),
+-            sort: true,
+-            formatter: (packageId: string) =>
+-                _(
+-                    <>
+-                        <span className='d-flex justify-content-evenly'>
+-                            <OverlayTrigger overlay={
+-                                <Tooltip>
+-                                    {t('Edit Package')}
+-                                </Tooltip>}>
+-                                <Link href={`/packages/edit/${packageId}`}
+-                                      className='overlay-trigger'>
+-                                    <FaPencilAlt className='btn-icon' />
+-                                </Link>
+-                            </OverlayTrigger>
+-                        </span>
+-                    </>
+-                ),
+-        },
+-    ]
+-
+-    const fetchData = useCallback(
+-        async (url: string) => {
+-            const session = await getSession()
+-            if (CommonUtils.isNullOrUndefined(session))
+-                return signOut()
+-            const response = await ApiUtils.GET(url, session.user.access_token)
+-            if (response.status === HttpStatus.OK) {
+-                const data = (await response.json())
+-                return data
+-            } else if (response.status === HttpStatus.UNAUTHORIZED) {
+-                return signOut()
+-            } else {
+-                return undefined
+-            }
+-        },
+-        []
+-    )
+-
+-    useEffect(() => {
+-        fetchData(`projects/${projectId}/linkedPackages`)
+-            .then((linkedPackages: EmbeddedLinkedPackages | undefined) => {
+-                if (linkedPackages === undefined) return
+-
+-                if (
+-                    !CommonUtils.isNullOrUndefined(linkedPackages['_embedded']) &&
+-                    !CommonUtils.isNullOrUndefined(linkedPackages['_embedded']['sw360:packages'])
+-                ) {
+-                    const data = linkedPackages['_embedded']['sw360:packages'].map((item: LinkedPackage) => [
+-                        [
+-                            item.vendorId ?? '',
+-                            item.vendorName ?? ''
+-                        ],
+-                        [ item.packageId, item.packageName, item.packageVersion ],
+-                        [
+-                            item.releaseId ?? '',
+-                            item.releaseName ?? '',
+-                            item.releaseVersion ?? ''
+-                        ],
+-                        item.releaseClearingState ?? '',
+-                        item.licenses ?? [],
+-                        item.packageManager ?? '',
+-                        item.packageId,
+-                    ])
+-                    setTableData(data)
+-                }
+-            })
+-            .catch((err) => console.error(err))
+-    }, [projectId, fetchData])
+-
+-
+-    return (
+-        <>
+-            <div className='row mb-4'>
+-                <div style={{ paddingLeft: '0px' }}>
+-                    <Table
+-                        columns={columns}
+-                        data={tableData}
+-                        sort={false}
+-                    />
+-                </div>
+-            </div>
+-        </>
+-    )
+-}
+diff --git a/src/app/[locale]/projects/detail/[id]/components/ProjectDetailTab.tsx b/src/app/[locale]/projects/detail/[id]/components/ProjectDetailTab.tsx
+index 05248291..0171e95c 100644
+--- a/src/app/[locale]/projects/detail/[id]/components/ProjectDetailTab.tsx
++++ b/src/app/[locale]/projects/detail/[id]/components/ProjectDetailTab.tsx
+@@ -28,7 +28,6 @@ import Obligations from '../../../components/Obligations/Obligations'
+ import ProjectAttachments from './Attachments'
+ import VulnerabilityTrackingStatusComponent from './VulnerabilityTrackingStatus'
+ import MessageService from '@/services/message.service'
+-import LinkedPackagesTab from './LinkedPackagesTab'
+ 
+ export default function ViewProjects({ projectId }: { projectId: string }): JSX.Element {
+     const t = useTranslations('default')
+@@ -113,9 +112,6 @@ export default function ViewProjects({ projectId }: { projectId: string }): JSX.
+                                 <ListGroup.Item action eventKey='licenseClearing'>
+                                     <div className='my-2'>{t('License Clearing')}</div>
+                                 </ListGroup.Item>
+-                                <ListGroup.Item action eventKey='linkedPackages'>
+-                                    <div className='my-2'>{t('Linked Packages')}</div>
+-                                </ListGroup.Item>
+                                 <ListGroup.Item action eventKey='obligations'>
+                                     <div className='my-2'>{t('Obligations')}</div>
+                                 </ListGroup.Item>
+@@ -198,9 +194,6 @@ export default function ViewProjects({ projectId }: { projectId: string }): JSX.
+                                             />
+                                         )}
+                                     </Tab.Pane>
+-                                    <Tab.Pane eventKey='linkedPackages'>
+-                                        < LinkedPackagesTab projectId={projectId}/>
+-                                    </Tab.Pane>
+                                     <Tab.Pane eventKey='obligations'>
+                                         <Obligations projectId={projectId} actionType={ActionType.DETAIL}/>
+                                     </Tab.Pane>
+diff --git a/src/app/[locale]/projects/generateSourceCode/[id]/components/GenerateSourceCodeBundle.tsx b/src/app/[locale]/projects/generateSourceCode/[id]/components/GenerateSourceCodeBundle.tsx
+index 94d6d70b..74e4a5b6 100644
+--- a/src/app/[locale]/projects/generateSourceCode/[id]/components/GenerateSourceCodeBundle.tsx
++++ b/src/app/[locale]/projects/generateSourceCode/[id]/components/GenerateSourceCodeBundle.tsx
+@@ -16,8 +16,10 @@ import Link from "next/link"
+ import { useEffect, useState, ReactNode, Dispatch, SetStateAction } from "react"
+ import { useSession, getSession, signOut } from "next-auth/react"
+ import { ApiUtils, CommonUtils } from "@/utils"
+-import { AttachmentUsages, HttpStatus, Project, NodeData, Embedded, ProjectLinkedRelease, Release, Attachment, AttachmentUsage } from "@/object-types"
++import { AttachmentUsages, HttpStatus, Project, NodeData, Embedded, ProjectLinkedRelease, Release, AttachmentUsage, SaveUsagesPayload } from "@/object-types"
+ import { notFound, useSearchParams } from "next/navigation"
++import MessageService from '@/services/message.service'
++import DownloadService from '@/services/download.service'
+ 
+ type LinkedProjects = Embedded<Project, 'sw360:projects'>
+ 
+@@ -39,9 +41,16 @@ const fetchProjectAndReleaseDetails = (linkedProjects: Project[] | undefined, pr
+     }
+ }
+ 
+-const filterSRCTypeAttachments = (attachmentUsages: AttachmentUsages) => {
+-    for(const r of attachmentUsages['_embedded']['sw360:release']) {
+-        r.attachments = (r.attachments ?? []).filter((att: Attachment) => att.attachmentType === 'SRC')
++const setExpandedFieldsOfNewData = (prevState: NodeData[], newState: NodeData[]) => {
++    for(let i = 0; i < prevState.length ; ++i) {
++        if(prevState[i].isExpanded !== undefined)
++            newState[i].isExpanded = prevState[i].isExpanded
++
++        const prevChildren = prevState[i].children;
++        const newChildren = newState[i].children;
++        if (prevChildren && prevChildren.length > 0 && newChildren && newChildren.length > 0) {
++            setExpandedFieldsOfNewData(prevChildren, newChildren)
++        }
+     }
+ }
+ 
+@@ -55,9 +64,41 @@ export default function GenerateSourceCodeBundle({ projectId }: Readonly<{projec
+         linkedProjects: LinkedProjects | null
+     }>()
+     const [data, setData] = useState<NodeData[]>()
++    const [saveUsagesPayload, setSaveUsagesPayload] = useState<SaveUsagesPayload>({
++        selected: [],
++        deselected: [],
++        selectedConcludedUsages: [],
++        deselectedConcludedUsages: []
++    })
++    const [loading, setLoading] = useState(false)
+     
+-    const handleDownloadProject = (projectId: string) => {
+-        console.log('download  project', projectId)
++    const handleDownloadSourceCodeBundle = async (projectId: string) => {
++        try {
++            setLoading(true)
++            const searchParams = Object.fromEntries(params)
++            if(Object.prototype.hasOwnProperty.call(searchParams, "withSubProjects") === false) {
++                return
++            }
++            const session = await getSession()
++            if (CommonUtils.isNullOrUndefined(session)) {
++                MessageService.error(t('Something went wrong'))
++                return signOut()
++            }
++            const response = await ApiUtils.POST(`projects/${projectId}/saveAttachmentUsages`, saveUsagesPayload, session.user.access_token)
++            if(response.status !== HttpStatus.CREATED) {
++                MessageService.error(t('Something went wrong'))
++                return notFound()
++            }
++            const currentDate = new Date().toISOString().split('T')[0]
++            DownloadService.download(
++                `reports?withlinkedreleases=false&projectId=${projectId}&module=licenseResourceBundle&excludeReleaseVersion=false&withSubProject=${searchParams.withSubProjects}`, 
++                session, `SourceCodeBundle-${currentDate}.zip`
++            )
++        } catch(e) {
++            console.error(e)
++        } finally {
++            setLoading(false)
++        }
+     }
+ 
+     const formatReleaseAndAttachments = (attachmentUsage: AttachmentUsage[], r: Release, level: number): NodeData | undefined => {
+@@ -80,12 +121,33 @@ export default function GenerateSourceCodeBundle({ projectId }: Readonly<{projec
+             }
+             const attNode: NodeData = {
+                 rowData: [                    
+-                    <div className={`form-check text-center ${row_color_class}`} key={`${att.attachmentContentId ?? ''}_select`}>
++                    <div className={`form-check text-center ${row_color_class} border-0-cell`} key={`${att.attachmentContentId ?? ''}_select`}>
+                         <input className='form-check-input' type='checkbox' value={att.attachmentContentId ?? ''} />
++                        <input
++                            type="checkbox"
++                            className="form-check-input"
++                            checked={saveUsagesPayload.selected.indexOf(`${r._links?.self.href.split('/').at(-1) ?? ''}_sourcePackage_${att.attachmentContentId}`) !== -1}
++                            onChange={() => {
++                                const val = `${r._links?.self.href.split('/').at(-1) ?? ''}_sourcePackage_${att.attachmentContentId}`
++                                if(saveUsagesPayload.selected.indexOf(val) === -1) {
++                                    setSaveUsagesPayload({
++                                        ...saveUsagesPayload,
++                                        selected: [...saveUsagesPayload.selected, val],
++                                        deselected: saveUsagesPayload.deselected.filter(item => item !== val)
++                                    })
++                                } else {
++                                    setSaveUsagesPayload({
++                                        ...saveUsagesPayload,
++                                        selected: saveUsagesPayload.selected.filter(item => item !== val),
++                                        deselected: [...saveUsagesPayload.deselected, val]
++                                    })
++                                }
++                            }}
++                        />
+                     </div>, 
+-                    <div className={`text-center ${row_color_class}`} key={`${att.attachmentContentId ?? ''}_level`}>{level}</div>,
+-                    <div className={`${row_color_class}`} key={`${att.attachmentContentId ?? ''}_name`}>{att.filename}</div>, 
+-                    <p key={`${att.attachmentContentId ?? ''}_used_by`} className={`${row_color_class}`}>
++                    <div className={`text-center ${row_color_class} border-0-cell`} key={`${att.attachmentContentId ?? ''}_level`}>{level}</div>,
++                    <div className={`${row_color_class} border-0-cell`} key={`${att.attachmentContentId ?? ''}_name`}>{att.filename}</div>, 
++                    <p key={`${att.attachmentContentId ?? ''}_used_by`} className={`${row_color_class} border-0-cell`}>
+                         {
+                             usedIn !== 0 ? <>{
+                                 t.rich('USED_BY_PROJECTS', {
+@@ -95,18 +157,18 @@ export default function GenerateSourceCodeBundle({ projectId }: Readonly<{projec
+                             }</>: <>{t('not used in any project yet')}</>
+                         }
+                     </p>,
+-                    <div className={`text-center ${row_color_class}`} key={`${att.attachmentContentId ?? ''}_name`}>
++                    <div className={`text-center ${row_color_class} border-0-cell`} key={`${att.attachmentContentId ?? ''}_name`}>
+                         {Capitalize(r.clearingState ?? '')}
+                     </div>,
+                     <div className='text-center' key={`${att.attachmentContentId}_uploaded_by`}>
+                         <Link
+-                            className={`text-link ${row_color_class}`}
++                            className={`text-link ${row_color_class} border-0-cell`}
+                             href={`mailto:${att.createdBy}`}
+                         >
+                             {att.createdBy}
+                         </Link>
+                     </div>, 
+-                    <div className={`text-center ${row_color_class}`} key={`${att.attachmentContentId ?? ''}_clearing_team`}>{att.checkedTeam ?? ''}</div>
++                    <div className={`text-center ${row_color_class} border-0-cell`} key={`${att.attachmentContentId ?? ''}_clearing_team`}>{att.checkedTeam ?? ''}</div>
+                 ]
+             }
+             attNodes.push(attNode)
+@@ -116,24 +178,25 @@ export default function GenerateSourceCodeBundle({ projectId }: Readonly<{projec
+         }
+         const relNode: NodeData = {
+             rowData: [
+-                <div className={`text-center ${row_color_class}`} key={`${release_id}_select`}></div>,
+-                <div className={`text-center ${row_color_class}`}
++                <div className={`text-center ${row_color_class} border-0-cell`} key={`${release_id}_select`}></div>,
++                <div className={`text-center ${row_color_class} border-0-cell`}
+                     key={`${release_id}_level`}
+                 >1</div>,
+                 <Link href={`/component/release/detail/${release_id}`} 
+-                    className={`text-center text-link ${row_color_class}`} key={`${release_id}_release_name`}>
++                    className={`text-center text-link ${row_color_class} border-0-cell`} key={`${release_id}_release_name`}>
+                     {r.name ?? ''}{r.version ?? ` ${r.version}`}
+                 </Link>,
+-                <div className={`text-center ${row_color_class}`} key={`${release_id}_component_type`}>
++                <div className={`text-center ${row_color_class} border-0-cell`} key={`${release_id}_component_type`}>
+                     {r.componentType ?? ''}
+                 </div>,
+-                <div className={`text-center ${row_color_class}`} key={`${release_id}_clearing_state`}>
++                <div className={`text-center ${row_color_class} border-0-cell`} key={`${release_id}_clearing_state`}>
+                     {Capitalize(r.clearingState ?? '')}
+                 </div>,
+-                <div className={`text-center ${row_color_class}`} key={`${release_id}_uploaded_by`}></div>,
+-                <div className={`text-center ${row_color_class}`} key={`${release_id}_clearing_team`}></div>
++                <div className={`text-center ${row_color_class} border-0-cell`} key={`${release_id}_uploaded_by`}></div>,
++                <div className={`text-center ${row_color_class} border-0-cell`} key={`${release_id}_clearing_team`}></div>
+             ],
+-            children: attNodes
++            children: attNodes,
++            isExpanded: true
+         }
+         return relNode
+     }
+@@ -153,11 +216,11 @@ export default function GenerateSourceCodeBundle({ projectId }: Readonly<{projec
+                 const requests = [ApiUtils.GET(`projects/${projectId}`, session.user.access_token, signal)]
+                 if(searchParams.withSubProjects === 'true') {
+                     requests.push(
+-                        ApiUtils.GET(`projects/${projectId}/attachmentUsage?transitive=true`, session.user.access_token, signal),
++                        ApiUtils.GET(`projects/${projectId}/attachmentUsage?transitive=true&filter=withSourceAttachment`, session.user.access_token, signal),
+                         ApiUtils.GET(`projects/${projectId}/linkedProjects?transitive=true`, session.user.access_token, signal)
+                     )
+                 } else {
+-                    requests.push(ApiUtils.GET(`projects/${projectId}/attachmentUsage?transitive=false`, session.user.access_token, signal))
++                    requests.push(ApiUtils.GET(`projects/${projectId}/attachmentUsage?transitive=false&filter=withSourceAttachment`, session.user.access_token, signal))
+                 }
+                 const responses = await Promise.all(requests)
+                 if (responses.filter(response => (response.status === HttpStatus.UNAUTHORIZED)).length !== 0) {
+@@ -168,12 +231,34 @@ export default function GenerateSourceCodeBundle({ projectId }: Readonly<{projec
+     
+                 const proj = await responses[0].json() as Project
+                 setProject(proj)
++
+                 const attachmentUsages = await responses[1].json() as AttachmentUsages
+                 const linkedProjects = (searchParams.withSubProjects === 'true') ? await responses[2].json() as LinkedProjects: null
+                 setAttachmentUsagesAndLinkedProjects({
+                     attachmentUsages: attachmentUsages,
+                     linkedProjects: linkedProjects
+                 })
++
++                const saveUsages: SaveUsagesPayload = {
++                    selected: [],
++                    deselected: [],
++                    selectedConcludedUsages: [],
++                    deselectedConcludedUsages: []
++                }
++
++                for(const r of attachmentUsages['_embedded']['sw360:release']) {
++                    for(const att of r.attachments ?? []) {
++                        const usages = attachmentUsages["_embedded"]["sw360:attachmentUsages"][0].filter((elem: AttachmentUsage) => elem.attachmentContentId === att.attachmentContentId)
++                        for(const u of usages) {
++                            if (u.usageData && u.usageData.sourcePackage) {
++                                saveUsages.selected = [...new Set<string>([
++                                    ...saveUsages.selected, `${r._links?.self.href.split('/').at(-1) ?? ''}_sourcePackage_${att.attachmentContentId}`
++                                ])]
++                            }
++                        }
++                    }
++                }
++                setSaveUsagesPayload(saveUsages)
+             } catch(e) {
+                 console.error(e)
+             }
+@@ -187,7 +272,6 @@ export default function GenerateSourceCodeBundle({ projectId }: Readonly<{projec
+             return
+ 
+         const attachmentUsages = structuredClone(attachmentUsagesAndLinkedProjects.attachmentUsages)
+-        filterSRCTypeAttachments(attachmentUsages)
+ 
+         const tableData: NodeData[] = []
+ 
+@@ -205,24 +289,25 @@ export default function GenerateSourceCodeBundle({ projectId }: Readonly<{projec
+                 })
+                 const projectNode: NodeData = {
+                     rowData: [
+-                        <div className="text-center" key={`${p}_select`}></div>,
+-                        <div className="text-center"
++                        <div className="text-center border-0-cell" key={`${p}_select`}></div>,
++                        <div className="text-center border-0-cell"
+                             key={`${p}_level`}
+                         >1</div>,
+                         <Link href={`/projects/detail/${p}`} 
+-                            className="text-center text-link" key={`${p}_release_name`}>
++                            className="text-center text-link border-0-cell" key={`${p}_release_name`}>
+                             {proj[0].name}{proj[0].version !== undefined && ` ${proj[0].version}`}
+                         </Link>,
+-                        <div className="text-center" key={`${p}_component_type`}>
++                        <div className="text-center border-0-cell" key={`${p}_component_type`}>
+                             {Capitalize(proj[0].projectType ?? '')}
+                         </div>,
+-                        <div className="text-center" key={`${p}_clearing_state`}>
++                        <div className="text-center border-0-cell" key={`${p}_clearing_state`}>
+                             {Capitalize(proj[0].clearingState ?? '')}
+                         </div>,
+-                        <div className="text-center" key={`${p}_uploaded_by`}></div>,
+-                        <div className="text-center" key={`${p}_clearing_team`}></div>
++                        <div className="text-center border-0-cell" key={`${p}_uploaded_by`}></div>,
++                        <div className="text-center border-0-cell" key={`${p}_clearing_team`}></div>
+                     ],
+-                    children: []
++                    children: [],
++                    isExpanded: true
+                 }
+                 for(const r of attachmentUsages['_embedded']['sw360:release']) {
+                     if(!r.attachments)
+@@ -251,9 +336,12 @@ export default function GenerateSourceCodeBundle({ projectId }: Readonly<{projec
+                 continue
+             tableData.push(relNode)
+         }
+-        setData(tableData)
+-
+-    }, [attachmentUsagesAndLinkedProjects])
++        setData((prevState) => {
++            if(prevState !== undefined)
++                setExpandedFieldsOfNewData(prevState, tableData)
++            return tableData
++        })
++    }, [attachmentUsagesAndLinkedProjects, saveUsagesPayload])
+ 
+     const columns = [
+         {
+@@ -325,9 +413,10 @@ export default function GenerateSourceCodeBundle({ projectId }: Readonly<{projec
+                             <Button
+                                 variant='primary'
+                                 className='me-2 py-2 col-auto'
+-                                onClick={() => handleDownloadProject(projectId)}
++                                onClick={() => handleDownloadSourceCodeBundle(projectId)}
++                                disabled={loading}
+                             >
+-                                {t('Download File')}
++                                {t('Download File')}{' '}
+                             </Button>
+                             <div className='subscriptionBox my-2' style={{ maxWidth: '98vw',
+                                                                            textAlign:'left',
+diff --git a/src/object-types/AttachmentUsages.ts b/src/object-types/AttachmentUsages.ts
+index d4d634e3..519ef08b 100644
+--- a/src/object-types/AttachmentUsages.ts
++++ b/src/object-types/AttachmentUsages.ts
+@@ -57,3 +57,10 @@ export interface AttachmentUsage {
+         licenseInfo?: object
+     }
+ }
++
++export interface SaveUsagesPayload {
++    selected: string[]
++    deselected: string[]
++    selectedConcludedUsages: string[]
++    deselectedConcludedUsages: string[]
++}
+diff --git a/src/object-types/LinkedPackage.ts b/src/object-types/LinkedPackage.ts
+deleted file mode 100644
+index e2dce033..00000000
+--- a/src/object-types/LinkedPackage.ts
++++ /dev/null
+@@ -1,22 +0,0 @@
+-// This program and the accompanying materials are made
+-// available under the terms of the Eclipse Public License 2.0
+-// which is available at https://www.eclipse.org/legal/epl-2.0/
+-
+-// SPDX-License-Identifier: EPL-2.0
+-// License-Filename: LICENSE
+-
+-interface LinkedPackage {
+-    packageId: string
+-    packageName: string
+-    packageVersion: string
+-    vendorId?: string
+-    vendorName?: string
+-    releaseId?: string
+-    releaseName?: string
+-    releaseVersion?: string
+-    releaseClearingState?: string
+-    licenses?: Array<string>
+-    packageManager?: string
+-}
+-
+-export default LinkedPackage
+\ No newline at end of file
+diff --git a/src/object-types/enums/ReleaseClearingStateMapping.ts b/src/object-types/enums/ReleaseClearingStateMapping.ts
+deleted file mode 100644
+index 12c35b2e..00000000
+--- a/src/object-types/enums/ReleaseClearingStateMapping.ts
++++ /dev/null
+@@ -1,20 +0,0 @@
+-// Copyright (C) Siemens AG, 2025. Part of the SW360 Frontend Project.
+-
+-// This program and the accompanying materials are made
+-// available under the terms of the Eclipse Public License 2.0
+-// which is available at https://www.eclipse.org/legal/epl-2.0/
+-
+-// SPDX-License-Identifier: EPL-2.0
+-// License-Filename: LICENSE
+-
+-enum ReleaseClearingStateMapping {
+-    NEW_CLEARING = 'NEW_CLEARING',
+-    APPROVED = 'REPORT_APPROVED',
+-    REPORT_AVAILABLE = 'REPORT_AVAILABLE',
+-    SCAN_AVAILABLE = 'SCAN_AVAILABLE',
+-    SENT_TO_CLEARING_TOOL = 'SENT_TO_CLEARING_TOOL',
+-    UNDER_CLEARING = 'UNDER_CLEARING',
+-    INTERNAL_USE_SCAN_AVAILABLE = 'INTERNAL_USE_SCAN_AVAILABLE',
+-}
+-
+-export default ReleaseClearingStateMapping
+\ No newline at end of file
+diff --git a/src/object-types/index.ts b/src/object-types/index.ts
+index bdd1ac9b..6ef8fd41 100644
+--- a/src/object-types/index.ts
++++ b/src/object-types/index.ts
+@@ -13,7 +13,7 @@ import AccessToken from './AccessToken'
+ import AddtionalDataType from './AddtionalDataType'
+ import AdministrationDataType from './AdministrationDataType'
+ import Attachment from './Attachment'
+-import { AttachmentUsage, AttachmentUsages } from './AttachmentUsages'
++import { AttachmentUsage, AttachmentUsages, SaveUsagesPayload } from './AttachmentUsages'
+ import AuthToken from './AuthToken'
+ import COTSDetails from './COTSDetails'
+ import CVEReference from './CVEReference'
+@@ -37,7 +37,6 @@ import LicensePayload from './LicensePayload'
+ import LicenseType from './LicenseType'
+ import LinkedAttachments from './LinkedAttachments'
+ import LinkedProjectData from './LinkedProjectData'
+-import LinkedPackage from './LinkedPackage'
+ import LinkedPackageData from './LinkedPackageData'
+ import LinkedRelease from './LinkedRelease'
+ import LinkedReleaseData from './LinkedReleaseData'
+@@ -136,7 +135,6 @@ export type {
+     LicensePayload,
+     LicenseType,
+     LinkedAttachments,
+-    LinkedPackage,
+     LinkedPackageData,
+     LinkedProjectData,
+     LinkedRelease,
+@@ -195,6 +193,7 @@ export type {
+     Vulnerability,
+     VulnerabilityRatingAndActionPayload,
+     VulnerabilityTrackingStatus,
++    SaveUsagesPayload
+ }
+ 
+ // Special functions for populate data
+@@ -211,7 +210,6 @@ import ActionType from './enums/ActionType'
+ import ClearingRequestStates from './enums/ClearingRequestStates'
+ import DocumentTypes from './enums/DocumentTypes'
+ import ProjectVulnerabilityTabType from './enums/ProjectVulnerabilityTabType'
+-import ReleaseClearingStateMapping from './enums/ReleaseClearingStateMapping'
+ import RequestDocumentTypes from './enums/RequestDocumentTypes'
+ import UserGroupType from './enums/UserGroupType'
+ import VulnerabilitiesVerificationState from './enums/VulnerabilitiesVerificationState'
+@@ -226,7 +224,6 @@ export {
+     HttpStatus,
+     LicenseTabIds,
+     ProjectVulnerabilityTabType,
+-    ReleaseClearingStateMapping,
+     ReleaseTabIds,
+     RequestDocumentTypes,
+     UserGroupType,
+diff --git a/src/styles/globals.css b/src/styles/globals.css
+index 0f89176b..fa1b1f99 100644
+--- a/src/styles/globals.css
++++ b/src/styles/globals.css
+@@ -790,12 +790,13 @@ input::-webkit-datetime-edit {
+ 
+ .gridjs-td:has(.green-cell) {
+     background-color: #edf9f0;
+-    border-left: none;
+-    border-right: none;
+ }
+ 
+ .gridjs-td:has(.orange-cell) {
+     background-color: #fff4ec;
++}
++
++.gridjs-td:has(.border-0-cell) {
+     border-left: none;
+     border-right: none;
+ }

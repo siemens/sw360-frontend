@@ -28,7 +28,6 @@ import Obligations from '../../../components/Obligations/Obligations'
 import ProjectAttachments from './Attachments'
 import VulnerabilityTrackingStatusComponent from './VulnerabilityTrackingStatus'
 import MessageService from '@/services/message.service'
-import LinkedPackagesTab from './LinkedPackagesTab'
 
 export default function ViewProjects({ projectId }: { projectId: string }): JSX.Element {
     const t = useTranslations('default')
@@ -113,9 +112,6 @@ export default function ViewProjects({ projectId }: { projectId: string }): JSX.
                                 <ListGroup.Item action eventKey='licenseClearing'>
                                     <div className='my-2'>{t('License Clearing')}</div>
                                 </ListGroup.Item>
-                                <ListGroup.Item action eventKey='linkedPackages'>
-                                    <div className='my-2'>{t('Linked Packages')}</div>
-                                </ListGroup.Item>
                                 <ListGroup.Item action eventKey='obligations'>
                                     <div className='my-2'>{t('Obligations')}</div>
                                 </ListGroup.Item>
@@ -197,9 +193,6 @@ export default function ViewProjects({ projectId }: { projectId: string }): JSX.
                                                 clearingRequestId={summaryData.clearingRequestId ?? ''}
                                             />
                                         )}
-                                    </Tab.Pane>
-                                    <Tab.Pane eventKey='linkedPackages'>
-                                        < LinkedPackagesTab projectId={projectId}/>
                                     </Tab.Pane>
                                     <Tab.Pane eventKey='obligations'>
                                         <Obligations projectId={projectId} actionType={ActionType.DETAIL}/>
