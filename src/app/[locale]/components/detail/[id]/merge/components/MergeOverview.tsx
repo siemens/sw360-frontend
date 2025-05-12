@@ -139,7 +139,7 @@ export default function MergeOverview({ id }: Readonly<{ id: string }>): ReactNo
                             </div>
                             <div className={`p-2 border rounded-2 col-12 col-md ${mergeState === ComponentProcessorActionType.CONFIRM ? 'componentprocessor-active' : 'componentprocessor'}`} role="alert">
                                 <h6 className="fw-bold">3. {t('Confirm')}</h6>
-                                <p>{t('Choose a component that should be merged into the current one')}</p>
+                                <p>{t('Check the merged version and confirm')}</p>
                             </div>
                         </div>
                         {

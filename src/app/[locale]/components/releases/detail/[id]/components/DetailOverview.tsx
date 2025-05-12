@@ -1,5 +1,6 @@
 // Copyright (C) TOSHIBA CORPORATION, 2023. Part of the SW360 Frontend Project.
 // Copyright (C) Toshiba Software Development (Vietnam) Co., Ltd., 2023. Part of the SW360 Frontend Project.
+// Copyright (C) Siemens AG, 2025. Part of the SW360 Frontend Project.
 
 // This program and the accompanying materials are made
 // available under the terms of the Eclipse Public License 2.0
@@ -212,7 +213,7 @@ const DetailOverview = ({ releaseId, isSPDXFeatureEnabled }: Props): ReactNode =
             },
             name: t('Link To Project'),
         },
-        Merge: { link: '', type: 'secondary', name: t('Merge') },
+        Merge: { link: `/components/releases/detail/${releaseId}/merge`, type: 'secondary', name: t('Merge') },
         Subscribe: {
             link: '',
             type: isUserSubscribed() ? 'outline-danger' : 'outline-success',
