@@ -18,18 +18,24 @@ import { ApiUtils, CommonUtils } from '@/utils'
 import { getSession, signOut } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { Spinner } from 'react-bootstrap'
+import MergeReleaseTable from './MergeReleaseTable'
+
+interface Props {
+    releaseId: string
+}
 
 
-export default function ReleaseMergeOverview({ releaseId }: Readonly<{ releaseId: string }>): ReactNode {
+export default function ReleaseMergeOverview({ releaseId }: Props ): ReactNode {
     const router = useRouter()
     const t = useTranslations('default')
     const [mergeState, ] = useState<ComponentProcessorActionType>(ComponentProcessorActionType.CHOOSE_SOURCE)
     const [targetRelease, setTargetRelease] = useState<null | ReleaseDetail>(null)
-    // const [sourceRelease, setSourceRelease] = useState<null | ReleaseDetail>(null)
+    const [sourceRelease, setSourceRelease] = useState<null | ReleaseDetail>(null)
     // const [finalReleasePayload, setFinalReleasePayload] = useState<null | ReleaseDetail>(null)
-    // const [err, setErr] = useState<null | string>(null)
+    const [err, ] = useState<null | string>(null)
     // const [loading, setLoading] = useState(false)
-
+    const componentId = sessionStorage.getItem('currentComponentId') as string
+    sessionStorage.removeItem('currentComponentId')
 
     useEffect(() => {
         const controller = new AbortController()
@@ -78,19 +84,57 @@ export default function ReleaseMergeOverview({ releaseId }: Readonly<{ releaseId
                             }
                         </div>
                         <div className='d-flex justify-content-between text-center mb-3'>
-                            <div className={`p-2 border rounded-2 col-12 col-md ${mergeState === ComponentProcessorActionType.CHOOSE_SOURCE ? 'componentprocessor-active' : 'componentprocessor'}`} role="alert">
-                                <h6 className="fw-bold">1. {t('Choose source')}</h6>
-                                <p>{t('Choose a release that should be merged into the current one')}</p>
+                            <div className={`p-2 border rounded-2 col-12 col-md
+                                            ${mergeState === ComponentProcessorActionType.CHOOSE_SOURCE ?
+                                            'componentprocessor-active' : 'componentprocessor'}`
+                                           }
+                                 role="alert">
+                                <h6 className="fw-bold">
+                                    1. {t('Choose source')}
+                                </h6>
+                                <p>
+                                    {t('Choose a release that should be merged into the current one')}
+                                </p>
                             </div>
-                            <div className={`mx-4 p-2 border rounded-2 col-12 col-md ${mergeState === ComponentProcessorActionType.PROCESS_DATA ? 'componentprocessor-active' : 'componentprocessor'}`} role="alert">
-                                <h6 className="fw-bold">2. {t('Merge data')}</h6>
-                                <p>{t('Merge data from source into target release')}</p>
+                            <div className={`mx-4 p-2 border rounded-2 col-12 col-md
+                                           ${mergeState === ComponentProcessorActionType.PROCESS_DATA ?
+                                           'componentprocessor-active' : 'componentprocessor'}`
+                                           }
+                                 role="alert">
+                                <h6 className="fw-bold">
+                                    2. {t('Merge data')}
+                                </h6>
+                                <p>
+                                    {t('Merge data from source into target release')}
+                                </p>
                             </div>
-                            <div className={`p-2 border rounded-2 col-12 col-md ${mergeState === ComponentProcessorActionType.CONFIRM ? 'componentprocessor-active' : 'componentprocessor'}`} role="alert">
-                                <h6 className="fw-bold">3. {t('Confirm')}</h6>
-                                <p>{t('Check the merged version and confirm')}</p>
+                            <div className={`p-2 border rounded-2 col-12 col-md
+                                            ${mergeState === ComponentProcessorActionType.CONFIRM ?
+                                            'componentprocessor-active' : 'componentprocessor'}`
+                                            }
+                                 role="alert">
+                                <h6 className="fw-bold">
+                                    3. {t('Confirm')}
+                                </h6>
+                                <p>
+                                    {t('Check the merged version and confirm')}
+                                </p>
                             </div>
                         </div>
+                        {
+                            err !== null &&
+                            <div className="alert alert-danger my-2" role="alert">
+                                {err}
+                            </div>
+                        }
+                        {
+                            mergeState === ComponentProcessorActionType.CHOOSE_SOURCE &&
+                            <MergeReleaseTable componentId={componentId}
+                                               releaseId={releaseId}
+                                               sourceRelease={sourceRelease}
+                                               setSourceRelease={setSourceRelease}
+                            />
+                        }
                     </>
                     : <div className='col-12 text-center'>
                         <Spinner className='spinner' />
