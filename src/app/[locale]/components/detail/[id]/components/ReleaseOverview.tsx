@@ -113,7 +113,7 @@ const ReleaseOverview = ({ componentId, calledFromModerationRequestDetail }: Pro
             formatter: ([id, version]: Array<string>) =>
                 _(
                     <>
-                        {sessionStorage.setItem('currentComponentId', `${componentId}`)}
+                        {localStorage.setItem('currentComponentId', `${componentId}`)}
                         <Link href={'/components/releases/detail/' + id} className='link'>
                             {version}
                         </Link>

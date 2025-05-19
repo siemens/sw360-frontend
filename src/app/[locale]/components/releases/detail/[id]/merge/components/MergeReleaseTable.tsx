@@ -33,14 +33,14 @@ export default function MergeReleaseTable({ componentId,
                                             setSourceRelease }: Props): ReactNode {
     const t = useTranslations('default')
     const { data: session } = useSession()
-    console.log('session', setSourceRelease)
+
 
     const columns = [
         {
             id: 'release.merge.select',
             width: '5%',
             formatter: (singleReleaseData: ReleaseDetail) => 
-                _(
+                _(  
                     <Form.Check type='radio'
                                 name='sourceComponent'
                                 checked={sourceRelease !== null &&

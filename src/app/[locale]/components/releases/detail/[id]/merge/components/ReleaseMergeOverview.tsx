@@ -34,8 +34,7 @@ export default function ReleaseMergeOverview({ releaseId }: Props ): ReactNode {
     // const [finalReleasePayload, setFinalReleasePayload] = useState<null | ReleaseDetail>(null)
     const [err, ] = useState<null | string>(null)
     // const [loading, setLoading] = useState(false)
-    const componentId = sessionStorage.getItem('currentComponentId') as string
-    sessionStorage.removeItem('currentComponentId')
+    const componentId = localStorage.getItem('currentComponentId') as string
 
     useEffect(() => {
         const controller = new AbortController()
