@@ -17,10 +17,13 @@ import { useTranslations } from 'next-intl'
 import { useRef, useState, ReactNode } from 'react'
 import DeleteAllLicenseInformationModal from './DeleteAllLicenseInformationModal'
 import MessageService from '@/services/message.service'
+import ImportSPDXModal from './ImportSPDXModal'
 
 export default function LicenseAdministration() : ReactNode {
+    
     const t = useTranslations('default')
     const file = useRef<File | undefined>(undefined)
+    const [showImportSPDXModal, setShowImportSPDXModal] = useState(false)
     const [deleteAllLicenseInformationModal, showDeleteAllLicenseInformationModal] = useState(false)
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -75,6 +78,10 @@ export default function LicenseAdministration() : ReactNode {
                 show={deleteAllLicenseInformationModal}
                 setShow={showDeleteAllLicenseInformationModal}
             />
+            <ImportSPDXModal
+                show={showImportSPDXModal}
+                setShow={setShowImportSPDXModal}
+            />
             <div className='mt-4 mx-5'>
                 <div className='row'>
                     <div className='col-lg-8'>
@@ -85,7 +92,10 @@ export default function LicenseAdministration() : ReactNode {
                         >
                             {t('Download License Archive')}
                         </button>
-                        <button type='button' className='btn btn-primary col-auto me-2'>
+                        <button type='button'
+                                className='btn btn-primary col-auto me-2'
+                                onClick={() => setShowImportSPDXModal(true)}
+                        >
                             {t('Import SPDX Information')}
                         </button>
                         <button type='button' className='btn btn-primary col-auto me-2'>
