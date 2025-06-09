@@ -8,6 +8,11 @@
 // License-Filename: LICENSE
 
 'use client';
+import { HttpStatus } from '@/object-types';
+import MessageService from '@/services/message.service';
+import CommonUtils from '@/utils/common.utils';
+import { ApiUtils } from '@/utils/index';
+import { getSession, signOut } from 'next-auth/react';
 import { useTranslations } from 'next-intl';
 import { useState, type JSX } from "react";
 import { Button, Modal } from 'react-bootstrap';
@@ -18,12 +23,49 @@ interface Props {
     setShow: React.Dispatch<React.SetStateAction<boolean>>
 }
 
+interface ImportSPDXResponse {
+    result: string
+    message: string
+    totalAffectedLicenses: number
+    totalLicenses: number
+}
+
 export default function ImportSPDXModal ({show,
                                           setShow}: Props) : JSX.Element {
     const t = useTranslations('default')
     const [loading, setLoading] = useState<boolean>(false)
+    const [responseText, setResponseText] = useState<ImportSPDXResponse>()
 
-    console.log('loading', loading, setLoading)
+    console.log('loading', loading, responseText)
+
+    const handleImportSPDXInfo = async () => {
+        setLoading(true)
+        try {
+            const session = await getSession()
+            if (CommonUtils.isNullOrUndefined(session))
+                return signOut()
+            const response = await ApiUtils.POST('licenses/import/SPDX', {}, session.user.access_token)
+            if (response.status == HttpStatus.OK) {
+                const responseData = await response.json() as ImportSPDXResponse
+                if (responseData !== null) {
+                    setResponseText(responseData)
+                }
+            } else if (response.status === HttpStatus.UNAUTHORIZED) {
+                MessageService.warn(t('Unauthorized request'))
+            } else {
+                MessageService.error(t('Something went wrong'))
+            }
+        } catch(error) {
+            if (error instanceof DOMException && error.name === "AbortError") {
+                return
+            }
+            const message = error instanceof Error ? error.message : String(error)
+            MessageService.error(message)
+        } finally {
+            setLoading(false)
+        }
+    }
+            
 
     const handleCloseDialog = () => {
         setShow(!show)
@@ -66,7 +108,7 @@ export default function ImportSPDXModal ({show,
                     </Button>
                     <Button className='login-btn'
                             variant='primary'
-                            // onClick={() => handleImportSPDXInfo()}
+                            onClick={() => handleImportSPDXInfo()}
                     >
                         {t('Import SPDX Licenses')}
                     </Button>
