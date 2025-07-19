@@ -17,16 +17,24 @@ import { useTranslations } from 'next-intl'
 import { useRouter } from 'next/navigation'
 import { ReactNode, useEffect, useState } from 'react'
 import { Spinner } from 'react-bootstrap'
+import MergeReleaseTable from './MergeReleaseTable'
 
-export default function ReleaseMergeOverview({ releaseId }: Readonly<{ releaseId: string }>): ReactNode {
+interface Props {
+    releaseId: string
+}
+
+export default function ReleaseMergeOverview({ releaseId }: Props): ReactNode {
     const router = useRouter()
     const t = useTranslations('default')
     const [mergeState] = useState<MergeOrSplitActionType>(MergeOrSplitActionType.CHOOSE_SOURCE)
     const [targetRelease, setTargetRelease] = useState<null | ReleaseDetail>(null)
-    // const [sourceRelease, setSourceRelease] = useState<null | ReleaseDetail>(null)
+    const [sourceRelease, setSourceRelease] = useState<null | ReleaseDetail>(null)
     // const [finalReleasePayload, setFinalReleasePayload] = useState<null | ReleaseDetail>(null)
-    // const [err, setErr] = useState<null | string>(null)
+    const [err] = useState<null | string>(null)
     // const [loading, setLoading] = useState(false)
+
+    const componentId = sessionStorage.getItem('currentComponentId') as string
+    sessionStorage.removeItem('currentComponentId')
 
     useEffect(() => {
         const controller = new AbortController()
@@ -92,6 +100,22 @@ export default function ReleaseMergeOverview({ releaseId }: Readonly<{ releaseId
                             <p>{t('Check the merged version and confirm')}</p>
                         </div>
                     </div>
+                    {err !== null && (
+                        <div
+                            className='alert alert-danger my-2'
+                            role='alert'
+                        >
+                            {err}
+                        </div>
+                    )}
+                    {mergeState === MergeOrSplitActionType.CHOOSE_SOURCE && (
+                        <MergeReleaseTable
+                            componentId={componentId}
+                            releaseId={releaseId}
+                            sourceRelease={sourceRelease}
+                            setSourceRelease={setSourceRelease}
+                        />
+                    )}
                 </>
             ) : (
                 <div className='col-12 text-center'>

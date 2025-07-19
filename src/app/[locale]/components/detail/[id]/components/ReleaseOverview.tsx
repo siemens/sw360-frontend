@@ -108,12 +108,16 @@ const ReleaseOverview = ({ componentId, calledFromModerationRequestDetail }: Pro
             name: t('Version'),
             formatter: ([id, version]: Array<string>) =>
                 _(
-                    <Link
-                        href={'/components/releases/detail/' + id}
-                        className='link'
-                    >
-                        {version}
-                    </Link>,
+                    <>
+                        {sessionStorage.setItem('currentComponentId', `${componentId}`)}
+                        <Link
+                            href={'/components/releases/detail/' + id}
+                            className='link'
+                        >
+                            {version}
+                        </Link>
+                        ,
+                    </>,
                 ),
             sort: true,
         },
