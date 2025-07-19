@@ -35,7 +35,6 @@ export default function MergeReleaseTable({
 }: Props): ReactNode {
     const t = useTranslations('default')
     const { data: session } = useSession()
-    console.log('session', setSourceRelease)
 
     const columns = [
         {
