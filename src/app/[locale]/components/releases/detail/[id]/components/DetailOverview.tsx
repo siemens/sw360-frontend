@@ -216,7 +216,7 @@ const DetailOverview = ({ releaseId, isSPDXFeatureEnabled }: Props): ReactNode =
             },
             name: t('Link To Project'),
         },
-        Merge: { link: '', type: 'secondary', name: t('Merge') },
+        Merge: { link: `/components/releases/detail/${releaseId}/merge`, type: 'secondary', name: t('Merge') },
         Subscribe: {
             link: '',
             type: isUserSubscribed() ? 'outline-danger' : 'outline-success',
