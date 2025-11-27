@@ -9,7 +9,7 @@
 
 'use client'
 
-import { ColumnDef, getCoreRowModel, getSortedRowModel, SortingState, useReactTable } from '@tanstack/react-table'
+import { ColumnDef, getCoreRowModel, SortingState, useReactTable } from '@tanstack/react-table'
 import { StatusCodes } from 'http-status-codes'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -362,7 +362,6 @@ function Packages(): ReactNode {
         data: memoizedData,
         columns,
         getCoreRowModel: getCoreRowModel(),
-        getSortedRowModel: getSortedRowModel(),
         manualSorting: true,
         manualPagination: true,
         pageCount: paginationMeta?.totalPages ?? 1,

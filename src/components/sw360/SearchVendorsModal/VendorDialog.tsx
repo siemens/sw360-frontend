@@ -10,12 +10,12 @@
 
 'use client'
 
-import { ColumnDef, getCoreRowModel, useReactTable } from '@tanstack/react-table'
+import { ColumnDef, getCoreRowModel, SortingState, useReactTable } from '@tanstack/react-table'
 import { StatusCodes } from 'http-status-codes'
 import { signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { PageSizeSelector, SW360Table, TableFooter } from 'next-sw360'
-import React, { Dispatch, type JSX, SetStateAction, useCallback, useMemo, useRef, useState } from 'react'
+import React, { Dispatch, type JSX, SetStateAction, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Form, Modal, Spinner } from 'react-bootstrap'
 import { Embedded, ErrorDetails, PageableQueryParam, PaginationMeta, Vendor } from '@/object-types'
 import MessageService from '@/services/message.service'
@@ -64,6 +64,7 @@ const VendorDialog = ({ show, setShow, setVendor, vendor }: Props): JSX.Element 
             {
                 id: 'fullName',
                 accessorKey: 'fullName',
+                enableSorting: true,
                 header: t('Full Name'),
                 cell: (info) => info.getValue(),
                 meta: {
@@ -73,6 +74,7 @@ const VendorDialog = ({ show, setShow, setVendor, vendor }: Props): JSX.Element 
             {
                 id: 'shortName',
                 accessorKey: 'shortName',
+                enableSorting: true,
                 header: t('Short Name'),
                 cell: (info) => info.getValue(),
                 meta: {
@@ -83,6 +85,7 @@ const VendorDialog = ({ show, setShow, setVendor, vendor }: Props): JSX.Element 
                 id: 'url',
                 header: t('URL'),
                 accessorKey: 'url',
+                enableSorting: true,
                 cell: (info) => info.getValue(),
                 meta: {
                     width: '25%',
@@ -159,6 +162,13 @@ const VendorDialog = ({ show, setShow, setVendor, vendor }: Props): JSX.Element 
         }
     }
 
+    useEffect(
+        () => void searchVendor(),
+        [
+            pageableQueryParam,
+        ],
+    )
+
     const table = useReactTable({
         data: memoizedData,
         columns,
@@ -170,6 +180,12 @@ const VendorDialog = ({ show, setShow, setVendor, vendor }: Props): JSX.Element 
                 pageIndex: pageableQueryParam.page,
                 pageSize: pageableQueryParam.page_entries,
             },
+            sorting: [
+                {
+                    id: pageableQueryParam.sort.split(',')[0],
+                    desc: pageableQueryParam.sort.split(',')[1] === 'desc',
+                },
+            ],
         },
 
         // server side pagination config
@@ -191,14 +207,69 @@ const VendorDialog = ({ show, setShow, setVendor, vendor }: Props): JSX.Element 
             }))
         },
 
+        manualSorting: true,
+        onSortingChange: (updater) => {
+            setPageableQueryParam((prev) => {
+                const prevSorting: SortingState = [
+                    {
+                        id: prev.sort.split(',')[0],
+                        desc: prev.sort.split(',')[1] === 'desc',
+                    },
+                ]
+                const nextSorting = typeof updater === 'function' ? updater(prevSorting) : updater
+                if (nextSorting.length > 0) {
+                    const { id, desc } = nextSorting[0]
+                    return {
+                        ...prev,
+                        sort: `${id},${desc ? 'desc' : 'asc'}`,
+                    }
+                }
+                return {
+                    ...prev,
+                    sort: '',
+                }
+            })
+        },
+
         meta: {
             rowHeightConstant: true,
         },
     })
 
+    const closeModal = () => {
+        setShow(false)
+        setVendorData([])
+        setPaginationMeta({
+            size: 0,
+            totalElements: 0,
+            totalPages: 0,
+            number: 0,
+        })
+        setPageableQueryParam({
+            page: 0,
+            page_entries: 3,
+            sort: '',
+        })
+        setSearchText('')
+        setSelectedVendor(vendor)
+    }
+
     const handleClickSelectVendor = () => {
         setVendor(selectedVendor)
-        setShow(!show)
+        setShow(false)
+        setVendorData([])
+        setPaginationMeta({
+            size: 0,
+            totalElements: 0,
+            totalPages: 0,
+            number: 0,
+        })
+        setPageableQueryParam({
+            page: 0,
+            page_entries: 10,
+            sort: '',
+        })
+        setSearchText('')
     }
 
     return (
@@ -209,7 +280,7 @@ const VendorDialog = ({ show, setShow, setVendor, vendor }: Props): JSX.Element 
             />
             <Modal
                 show={show}
-                onHide={handleCloseDialog}
+                onHide={closeModal}
                 backdrop='static'
                 centered
                 size='lg'
