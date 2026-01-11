@@ -1,5 +1,6 @@
 // Copyright (C) TOSHIBA CORPORATION, 2025. Part of the SW360 Frontend Project.
 // Copyright (C) Toshiba Software Development (Vietnam) Co., Ltd., 2025. Part of the SW360 Frontend Project.
+// Copyright (C) Siemens AG, 2026. Part of the SW360 Frontend Project.
 
 // This program and the accompanying materials are made
 // available under the terms of the Eclipse Public License 2.0
@@ -12,7 +13,7 @@ import { useEffect, useState } from 'react'
 import { ObligationElement, TreeNode } from '../../../../../object-types/Obligation'
 
 interface ObligationTreeReturn {
-    tree: TreeNode[]
+    tree: TreeNode | undefined
     treeText: string
     addChild: (parentId?: string) => void
     addSibling: (nodeId: string, parentId?: string) => void
@@ -25,8 +26,8 @@ interface ObligationTreeReturn {
     updateNodeElement: (nodeId: string, element: ObligationElement) => void
 }
 
-export function useObligationTree(initialText?: string): ObligationTreeReturn {
-    const [tree, setTree] = useState<TreeNode[]>([])
+export function useObligationTree(initialText?: string, initialTree?: string): ObligationTreeReturn {
+    const [tree, setTree] = useState<TreeNode>()
     const [treeText, setTreeText] = useState(initialText ?? '')
     const generateId = () => Math.random().toString(36).substring(2, 11)
     const getTreeAsText = (nodes: TreeNode[], level = 0): string => {
@@ -161,22 +162,20 @@ export function useObligationTree(initialText?: string): ObligationTreeReturn {
         field: 'type' | 'text' | 'languageElement' | 'action' | 'object',
         value: string,
     ) => {
-        const updateNodeInTree = (nodes: TreeNode[]): TreeNode[] => {
-            return nodes.map((node) => {
-                if (node.id === nodeId) {
-                    return {
-                        ...node,
-                        [field]: value,
-                    }
-                }
+     const updateRecursively = (node: TreeNode): TreeNode => {
+            if (node.id === nodeId) {
                 return {
                     ...node,
-                    children: updateNodeInTree(node.children),
-                }
-            })
+                    [field]: value,
+                };
+            }
+            return {
+                ...node,
+                children: node.children.map(updateRecursively),
+            }
         }
-        const updatedTree = updateNodeInTree(tree)
-        setTree(updatedTree)
+        const updatedTree = updateRecursively(tree);
+    setTree(updatedTree);
         setTreeText(getTreeAsText(updatedTree))
     }
 
@@ -202,94 +201,49 @@ export function useObligationTree(initialText?: string): ObligationTreeReturn {
         setTreeText(getTreeAsText(updatedTree))
     }
 
-    const parseTextToTree = (text: string): TreeNode[] => {
-        if (!text.trim()) return []
+    const renameTree = (node: TreeNode): TreeNode => {
+        const normalized: TreeNode | undefined = { ...node }
+        console.log('Normalizing node:', normalized)
 
-        const lines = text.split('\n')
-        const rootNodes: TreeNode[] = []
-        const nodeMap: Record<string, TreeNode> = {}
+        // rename langElement → languageElement if present
+        if ("langElement" in normalized && !("languageElement" in normalized)) {
+            normalized.languageElement = normalized.langElement as string
+            delete normalized.langElement
+        }
 
-        lines.forEach((line) => {
-            const indentLevel = line.search(/\S|$/) / 4
-            const trimmedLine = line.trim()
-            if (!trimmedLine) return
+        normalized.children = Array.isArray(normalized.children)
+            ? normalized.children.map((child: TreeNode) => {
+                const childWithParent = {
+                ...child,
+                parentId: normalized.id,
+                };
+                return renameTree(childWithParent);
+            })
+            : []
 
-            const parts = trimmedLine.split(' ')
-            let newNode: TreeNode
+    return normalized as TreeNode
+    }
 
-            if (parts.length >= 3) {
-                const imperatives = [
-                    'YOU MUST',
-                    'YOU MUST NOT',
-                    'YOU MAY',
-                    'YOU SHOULD',
-                ]
-                const foundImperative = imperatives.find((imp) => trimmedLine.toUpperCase().startsWith(imp))
-
-                if (foundImperative != undefined) {
-                    const remainingText = trimmedLine.substring(foundImperative.length).trim()
-                    const [action = '', ...objectParts] = remainingText
-                        ? remainingText.split(' ')
-                        : [
-                              '',
-                          ]
-                    newNode = {
-                        id: generateId(),
-                        type: '',
-                        text: '',
-                        children: [],
-                        languageElement: foundImperative,
-                        action: action,
-                        object: objectParts.join(' '),
-                    }
-                } else {
-                    const spaceIndex = trimmedLine.indexOf(' ')
-                    const type = spaceIndex > 0 ? trimmedLine.substring(0, spaceIndex) : ''
-                    const text = spaceIndex > 0 ? trimmedLine.substring(spaceIndex + 1) : trimmedLine
-                    newNode = {
-                        id: generateId(),
-                        type,
-                        text,
-                        children: [],
-                    }
-                }
-            } else {
-                const spaceIndex = trimmedLine.indexOf(' ')
-                const type = spaceIndex > 0 ? trimmedLine.substring(0, spaceIndex) : ''
-                const text = spaceIndex > 0 ? trimmedLine.substring(spaceIndex + 1) : trimmedLine
-                newNode = {
-                    id: generateId(),
-                    type,
-                    text,
-                    children: [],
-                }
-            }
-
-            if (indentLevel === 0) {
-                rootNodes.push(newNode)
-                nodeMap[newNode.id] = newNode
-            } else {
-                const parentIndices = Object.keys(nodeMap).filter(
-                    (id) =>
-                        nodeMap[id].children.length === 0 ||
-                        !nodeMap[id].children.some((child) => nodeMap[child.id].children.length === 0),
-                )
-
-                if (parentIndices.length > 0) {
-                    const parentId = parentIndices[parentIndices.length - 1]
-                    newNode.parentId = parentId
-                    nodeMap[parentId].children.push(newNode)
-                    nodeMap[newNode.id] = newNode
-                }
-            }
-        })
-
-        return rootNodes
+    const parseTextToTree = (text: string): TreeNode => {
+        if (!text.trim()) return {} as TreeNode
+        const rootNodes: TreeNode = JSON.parse(text);
+        const tree : TreeNode = renameTree(rootNodes);
+        // const blob = new Blob([JSON.stringify(tree, null, 2)], {
+        //                         type: "application/json",
+        //                     })
+        // const url = URL.createObjectURL(blob)
+        // const a = document.createElement("a")
+        // a.href = url
+        // a.download = "tree.json"
+        // a.click()
+        // URL.revokeObjectURL(url)
+        console.log(tree)
+        return tree
     }
 
     useEffect(() => {
-        if (initialText !== undefined) {
-            const parsedTree = parseTextToTree(initialText)
+        if (initialTree !== undefined) {
+            const parsedTree = parseTextToTree(initialTree)
             setTree(parsedTree)
         }
     }, [])

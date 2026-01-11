@@ -1,5 +1,6 @@
 // Copyright (C) TOSHIBA CORPORATION, 2025. Part of the SW360 Frontend Project.
 // Copyright (C) Toshiba Software Development (Vietnam) Co., Ltd., 2025. Part of the SW360 Frontend Project.
+// Copyright (C) Siemens AG, 2026. Part of the SW360 Frontend Project.
 
 // This program and the accompanying materials are made
 // available under the terms of the Eclipse Public License 2.0
@@ -30,9 +31,9 @@ function ObligationForm({ obligation, setObligation }: ObligationFormProps): Rea
     )
 
     const { tree, treeText, addChild, addSibling, deleteNode, updateNode, updateNodeElement } = useObligationTree(
-        obligation.text,
+        obligation?.text, obligation?.node,
     )
-
+    console.log('ObligationForm tree text:', treeText)
     useEffect(() => {
         setObligation((prev) => ({
             ...prev,
@@ -102,7 +103,7 @@ function ObligationForm({ obligation, setObligation }: ObligationFormProps): Rea
                         >
                             {title}
                             <br />
-                            {treeText}
+                            <p style={{ marginLeft: '25px' }}>{treeText}</p>
                         </div>
                     </div>
                 </div>

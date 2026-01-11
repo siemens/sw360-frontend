@@ -80,7 +80,7 @@ export interface ObligationElement {
 }
 
 export interface ObligationTreeProps {
-    tree: TreeNode[]
+    tree: TreeNode
     title: string
     onAddChild: (parentId?: string) => void
     onAddSibling: (nodeId: string, parentId?: string) => void
@@ -96,6 +96,12 @@ export interface ObligationTreeProps {
 export interface ObligationFormProps {
     obligation: Obligation
     setObligation: React.Dispatch<React.SetStateAction<Obligation>>
+}
+
+export interface ObligationNode {
+    id: string, 
+    nodeType: string,
+    nodeText: string
 }
 
 export const ObligationTypes = {
