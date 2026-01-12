@@ -30,9 +30,9 @@ export function useObligationTree(initialText?: string, initialTree?: string): O
     const [tree, setTree] = useState<TreeNode>()
     const [treeText, setTreeText] = useState(initialText ?? '')
     const generateId = () => Math.random().toString(36).substring(2, 11)
-    const getTreeAsText = (nodes: TreeNode[], level = 0): string => {
+    const getTreeAsText = (nodes: TreeNode, level = 0): string => {
         let result = ''
-        nodes.forEach((node, index) => {
+        nodes.children.forEach((node, index) => {
             const indent = level > 0 ? '\t'.repeat(level) : ''
             let nodeText = ''
             if (node.languageElement != null) {
@@ -42,7 +42,7 @@ export function useObligationTree(initialText?: string, initialTree?: string): O
             }
             result += index === 0 && level === 0 ? nodeText : `\n${indent}${nodeText}`
             if (node.children.length > 0) {
-                result += getTreeAsText(node.children, level + 1)
+                result += getTreeAsText({ ...node, children: node.children }, level + 1)
             }
         })
         return result
@@ -57,7 +57,7 @@ export function useObligationTree(initialText?: string, initialTree?: string): O
             parentId,
         }
         const updatedTree =
-            parentId != null
+            parentId != null && tree != null
                 ? tree.map((node) =>
                       node.id === parentId
                           ? {
@@ -174,6 +174,7 @@ export function useObligationTree(initialText?: string, initialTree?: string): O
                 children: node.children.map(updateRecursively),
             }
         }
+        if (tree === undefined) return;
         const updatedTree = updateRecursively(tree);
     setTree(updatedTree);
         setTreeText(getTreeAsText(updatedTree))

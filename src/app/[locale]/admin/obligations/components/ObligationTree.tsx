@@ -41,6 +41,23 @@ export function ObligationTree({
         setShowImportElement(false)
     }
 
+    const dedupeByNodeType = (nodes: ObligationNode[]): ObligationNode[] => {
+        const seen = new Set<string>()
+
+        return nodes.filter((node) => {
+            if (!node.nodeType || node.nodeType.trim() === '') {
+                return false
+            }
+
+            if (seen.has(node.nodeType)) {
+                return false
+            }
+
+            seen.add(node.nodeType)
+            return true
+        })
+    }
+
     const fetchData = useCallback(async (url: string) => {
         const session = await getSession()
         if (CommonUtils.isNullOrUndefined(session)) return signOut()
@@ -64,7 +81,8 @@ export function ObligationTree({
                     !CommonUtils.isNullOrUndefined(response['_embedded']) &&
                     !CommonUtils.isNullOrUndefined(response['_embedded']['sw360:obligationNodes'])
                 ) {
-                    setObligationNodes(response['_embedded']['sw360:obligationNodes'])
+                    const dedupedNodes = dedupeByNodeType(response['_embedded']['sw360:obligationNodes'])
+                    setObligationNodes(dedupedNodes)
                 } else {
                     setObligationNodes([])
                 }
@@ -90,11 +108,11 @@ export function ObligationTree({
                 }}
                 className='tree-row'
             >
-                {node?.languageElement != null ? (
+                {node?.type === 'obligationElement' ? (
                     <div className='row mb-2 align-items-center position-relative'>
                         <div className='col-md-2'>
-                            <input
-                                type='text'
+                            {/* <select
+                                // type='text'
                                 className='form-control'
                                 id='obligationType'
                                 value={node.type === 'obligationElement' ? 'Obligation' : node.type}
@@ -103,7 +121,30 @@ export function ObligationTree({
                                     e.preventDefault()
                                     onUpdateNode(node.id, 'type', e.target.value)
                                 }}
+                            >
+                                {obligationNodes.map(item => (
+                                    <option key={item.id} value={item.nodeType}>
+                                        {item.nodeType}
+                                    </option>
+                                ))}
+                            </select> */}
+                            <input
+                                type='text'
+                                className='form-control'
+                                id='obligationType'
+                                list="obligationTypes"
+                                value={node.type === 'obligationElement' ? 'Obligation' : node.type}
+                                hidden={!node?.languageElement}
+                                onChange={(e) => {
+                                    e.preventDefault()
+                                    onUpdateNode(node.id, 'type', e.target.value)
+                                }}
                             />
+                            <datalist id="obligationTypes">
+                                {obligationNodes.map((item) => (
+                                    <option key={item.id} value={item.nodeType} />
+                                ))}
+                            </datalist>
                         </div>
                         <div className='col-md-2'>
                             <input
@@ -213,8 +254,14 @@ export function ObligationTree({
                                 className='form-control'
                                 placeholder={t('Type')}
                                 value={node?.type}
-                            // onChange={(e) => onUpdateNode(node.id, 'type', e.target.value)}
+                                list="obligationTypes"
+                                onChange={(e) => onUpdateNode(node.id, 'type', e.target.value)}
                             />
+                            <datalist id="obligationTypes">
+                                {obligationNodes.map((item) => (
+                                    <option key={item.id} value={item.nodeType} />
+                                ))}
+                            </datalist>
                         </div>
                         <div className='col-md-3'>
                             <input
@@ -222,7 +269,7 @@ export function ObligationTree({
                                 className='form-control'
                                 placeholder={t('Text')}
                                 value={node?.text}
-                            // onChange={(e) => onUpdateNode(node.id, 'text', e.target.value)}
+                                onChange={(e) => onUpdateNode(node.id, 'text', e.target.value)}
                             />
                         </div>
                         <div className='col-md-3 d-flex align-items-center action-buttons opacity-0'>
@@ -234,10 +281,10 @@ export function ObligationTree({
                                     color: 'blue',
                                     textDecoration: 'none',
                                 }}
-                            // onClick={(e) => {
-                            //     e.preventDefault()
-                            //     onAddChild(node.id)
-                            // }}
+                                onClick={(e) => {
+                                    e.preventDefault()
+                                    onAddChild(node.id)
+                                }}
                             >
                                 +Child
                             </a>
@@ -249,10 +296,10 @@ export function ObligationTree({
                                     color: 'blue',
                                     textDecoration: 'none',
                                 }}
-                            // onClick={(e) => {
-                            //     e.preventDefault()
-                            //     onAddSibling(node.id, node.parentId)
-                            // }}
+                                onClick={(e) => {
+                                    e.preventDefault()
+                                    onAddSibling(node.id, node.parentId)
+                                }}
                             >
                                 +Sibling
                             </a>
@@ -264,10 +311,10 @@ export function ObligationTree({
                                     color: 'blue',
                                     textDecoration: 'none',
                                 }}
-                            // onClick={(e) => {
-                            //     e.preventDefault()
-                            //     onDeleteNode(node.id, node.parentId)
-                            // }}
+                                onClick={(e) => {
+                                    e.preventDefault()
+                                    onDeleteNode(node.id, node.parentId)
+                                }}
                             >
                                 Delete
                             </a>
@@ -279,11 +326,11 @@ export function ObligationTree({
                                     color: 'blue',
                                     textDecoration: 'none',
                                 }}
-                            // onClick={(e) => {
-                            //     e.preventDefault()
-                            //     setSelectedNodeId(node.id)
-                            //     setShowImportElement(true)
-                            // }}
+                                onClick={(e) => {
+                                    e.preventDefault()
+                                    setSelectedNodeId(node.id)
+                                    setShowImportElement(true)
+                                }}
                             >
                                 Import
                             </a>
