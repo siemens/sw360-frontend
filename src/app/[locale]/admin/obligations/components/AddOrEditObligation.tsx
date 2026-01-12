@@ -33,12 +33,12 @@ function ObligationForm({ obligation, setObligation }: ObligationFormProps): Rea
     const { tree, treeText, addChild, addSibling, deleteNode, updateNode, updateNodeElement } = useObligationTree(
         obligation?.text, obligation?.node,
     )
-    console.log('ObligationForm tree text:', treeText)
     useEffect(() => {
         setObligation((prev) => ({
             ...prev,
             title: title,
             text: treeText,
+            node: JSON.stringify(tree),
             obligationType:
                 Object.keys(ObligationTypes).find(
                     (key) => ObligationTypes[key as keyof typeof ObligationTypes] === obligationType,

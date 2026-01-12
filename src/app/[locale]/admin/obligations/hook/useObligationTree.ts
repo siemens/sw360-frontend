@@ -49,6 +49,7 @@ export function useObligationTree(initialText?: string, initialTree?: string): O
     }
 
     const addChild = (parentId?: string) => {
+        if (!tree) return
         const newNode: TreeNode = {
             id: generateId(),
             type: '',
@@ -56,31 +57,28 @@ export function useObligationTree(initialText?: string, initialTree?: string): O
             children: [],
             parentId,
         }
-        const updatedTree =
-            parentId != null && tree != null
-                ? tree.map((node) =>
-                      node.id === parentId
-                          ? {
-                                ...node,
-                                children: [
-                                    ...node.children,
-                                    newNode,
-                                ],
-                            }
-                          : {
-                                ...node,
-                                children: updateChildren(node.children, parentId, newNode),
-                            },
-                  )
-                : [
-                      ...tree,
-                      newNode,
-                  ]
+        const updatedTree : TreeNode =
+            parentId != null
+                ? {
+                    ...tree,
+                    children: updateChildren(
+                        tree.children,
+                        parentId,
+                        newNode,
+                    ),
+                }
+                : {
+                    ...tree,
+                    children: [...tree.children, newNode],
+                }
         setTree(updatedTree)
         setTreeText(getTreeAsText(updatedTree))
     }
 
-    const updateChildren = (children: TreeNode[], parentId: string, newNode: TreeNode): TreeNode[] => {
+    const updateChildren = (children: TreeNode[],
+                            parentId: string,
+                            newNode: TreeNode):
+                                TreeNode[] => {
         return children.map((child) =>
             child.id === parentId
                 ? {
@@ -92,7 +90,9 @@ export function useObligationTree(initialText?: string, initialTree?: string): O
                   }
                 : {
                       ...child,
-                      children: updateChildren(child.children, parentId, newNode),
+                      children: updateChildren(child.children,
+                                               parentId,
+                                               newNode),
                   },
         )
     }
@@ -163,25 +163,27 @@ export function useObligationTree(initialText?: string, initialTree?: string): O
         value: string,
     ) => {
      const updateRecursively = (node: TreeNode): TreeNode => {
+        console.log('Updating node:--', nodeId, field, value)
             if (node.id === nodeId) {
                 return {
                     ...node,
                     [field]: value,
-                };
+                }
             }
             return {
                 ...node,
                 children: node.children.map(updateRecursively),
             }
         }
-        if (tree === undefined) return;
-        const updatedTree = updateRecursively(tree);
-    setTree(updatedTree);
+        if (tree === undefined) return
+        const updatedTree = updateRecursively(tree)
+        console.log('Updated tree: at update tree', updatedTree)
         setTreeText(getTreeAsText(updatedTree))
+        setTree(updatedTree)
     }
 
     const updateNodeElement = (nodeId: string, element: ObligationElement) => {
-        const updateNodeInTree = (nodes: TreeNode[]): TreeNode[] => {
+        const updateNodeInTree = (nodes: TreeNode): TreeNode => {
             return nodes.map((node) => {
                 if (node.id === nodeId) {
                     return {
@@ -204,7 +206,7 @@ export function useObligationTree(initialText?: string, initialTree?: string): O
 
     const renameTree = (node: TreeNode): TreeNode => {
         const normalized: TreeNode | undefined = { ...node }
-        console.log('Normalizing node:', normalized)
+        // console.log('Normalizing node:', normalized)
 
         // rename langElement → languageElement if present
         if ("langElement" in normalized && !("languageElement" in normalized)) {
@@ -238,7 +240,7 @@ export function useObligationTree(initialText?: string, initialTree?: string): O
         // a.download = "tree.json"
         // a.click()
         // URL.revokeObjectURL(url)
-        console.log(tree)
+        // console.log(tree)
         return tree
     }
 

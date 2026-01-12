@@ -99,7 +99,7 @@ export function ObligationTree({
     ])
 
     const renderTree = (nodes: TreeNode[], level = 1) => {
-        console.log('Rendering level:', level, 'with nodes:', nodes)
+        // console.log('Rendering level:', level, 'with nodes:', nodes)
         return nodes && nodes.map((node) => (
             <div
                 key={node.id}
@@ -111,30 +111,13 @@ export function ObligationTree({
                 {node?.type === 'obligationElement' ? (
                     <div className='row mb-2 align-items-center position-relative'>
                         <div className='col-md-2'>
-                            {/* <select
-                                // type='text'
-                                className='form-control'
-                                id='obligationType'
-                                value={node.type === 'obligationElement' ? 'Obligation' : node.type}
-                                hidden={!node?.languageElement}
-                                onChange={(e) => {
-                                    e.preventDefault()
-                                    onUpdateNode(node.id, 'type', e.target.value)
-                                }}
-                            >
-                                {obligationNodes.map(item => (
-                                    <option key={item.id} value={item.nodeType}>
-                                        {item.nodeType}
-                                    </option>
-                                ))}
-                            </select> */}
                             <input
                                 type='text'
                                 className='form-control'
                                 id='obligationType'
                                 list="obligationTypes"
                                 value={node.type === 'obligationElement' ? 'Obligation' : node.type}
-                                hidden={!node?.languageElement}
+                                hidden={node.type !== 'obligationElement'}
                                 onChange={(e) => {
                                     e.preventDefault()
                                     onUpdateNode(node.id, 'type', e.target.value)
@@ -151,7 +134,7 @@ export function ObligationTree({
                                 type='text'
                                 className='form-control'
                                 value={node.languageElement}
-                                hidden={!node?.languageElement}
+                                hidden={node.type !== 'obligationElement'}
                                 onChange={(e) => {
                                     e.preventDefault()
                                     onUpdateNode(node.id, 'languageElement', e.target.value)
@@ -163,7 +146,7 @@ export function ObligationTree({
                                 type='text'
                                 className='form-control'
                                 value={node.action}
-                                hidden={!node?.languageElement}
+                                hidden={node.type !== 'obligationElement'}
                                 onChange={(e) => {
                                     e.preventDefault()
                                     onUpdateNode(node.id, 'action', e.target.value)
@@ -175,7 +158,7 @@ export function ObligationTree({
                                 type='text'
                                 className='form-control'
                                 value={node.object}
-                                hidden={!node?.languageElement}
+                                hidden={node.type !== 'obligationElement'}
                                 onChange={(e) => {
                                     e.preventDefault()
                                     onUpdateNode(node.id, 'object', e.target.value)
@@ -255,7 +238,12 @@ export function ObligationTree({
                                 placeholder={t('Type')}
                                 value={node?.type}
                                 list="obligationTypes"
-                                onChange={(e) => onUpdateNode(node.id, 'type', e.target.value)}
+                                onChange={(e) => {
+                                    if (e.target.value === 'Obligation') {
+                                        e.target.value = 'obligationElement'
+                                    }
+                                    onUpdateNode(node.id, 'type', e.target.value)
+                                }}
                             />
                             <datalist id="obligationTypes">
                                 {obligationNodes.map((item) => (
@@ -342,7 +330,7 @@ export function ObligationTree({
         ))
     }
 
-    console.log('ObligationTree rendered with tree:----', tree)
+    // console.log('ObligationTree rendered with tree:----', tree)
     return (
         <>
             <ImportElementDialog
