@@ -11,14 +11,15 @@
 
 import { StatusCodes } from 'http-status-codes'
 import { redirect, useRouter } from 'next/navigation'
-import { getSession, signOut, useSession } from 'next-auth/react'
+
 import { useTranslations } from 'next-intl'
 import { ReactNode, useEffect, useState } from 'react'
 import { Spinner } from 'react-bootstrap'
 import { AccessControl } from '@/components/AccessControl/AccessControl'
 import { Component, ErrorDetails, MergeOrSplitActionType, UserGroupType } from '@/object-types'
-import MessageService from '@/services/message.service'
-import { ApiUtils, CommonUtils } from '@/utils'
+import { ApiError } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
+import { dispatchSessionExpiredEvent } from '@/utils/sessionExpiry.utils'
 import ComponentTable from '../../components/ComponentTable'
 import MergeComponent from './MergeComponent'
 import MergeComponentConfirmation from './MergeConfirmation'
@@ -56,21 +57,10 @@ function MergeOverview({
     const [finalComponentPayload, setFinalComponentPayload] = useState<null | Component>(null)
     const [err, setErr] = useState<null | string>(null)
     const [loading, setLoading] = useState(false)
-    const { status } = useSession()
-
-    useEffect(() => {
-        if (status === 'unauthenticated') {
-            signOut()
-        }
-    }, [
-        status,
-    ])
 
     const handleMergeComponent = async () => {
         try {
             setLoading(true)
-            const session = await getSession()
-            if (CommonUtils.isNullOrUndefined(session)) return signOut()
             const payload = {
                 ...(finalComponentPayload ?? {}),
             }
@@ -79,18 +69,15 @@ function MergeOverview({
             const response = await ApiUtils.PATCH(
                 `components/mergecomponents?mergeTargetId=${targetComponent?.id}&mergeSourceId=${sourceComponent?.id}`,
                 payload,
-                session.user.access_token,
             )
             if (response.status !== 200) {
                 const err = (await response.json()) as ErrorDetails
-                throw new Error(err.message)
+                throw new ApiError(err.message, {
+                    status: response.status,
+                })
             }
         } catch (error) {
-            if (error instanceof DOMException && error.name === 'AbortError') {
-                return
-            }
-            const message = error instanceof Error ? error.message : String(error)
-            MessageService.error(message)
+            ApiUtils.reportError(error)
         } finally {
             setLoading(false)
             redirect(`/components/detail/${id}`)
@@ -103,26 +90,24 @@ function MergeOverview({
 
         ;(async () => {
             try {
-                const session = await getSession()
-                if (CommonUtils.isNullOrUndefined(session)) return signOut()
-                const response = await ApiUtils.GET(`components/${id}`, session.user.access_token, signal)
+                const response = await ApiUtils.GET(`components/${id}`, signal)
 
                 if (response.status === StatusCodes.UNAUTHORIZED) {
-                    return signOut()
+                    return dispatchSessionExpiredEvent()
                 } else if (response.status === StatusCodes.OK) {
                     const component = (await response.json()) as Component
                     setTargetComponent(component)
                 } else {
                     const err = (await response.json()) as ErrorDetails
-                    throw new Error(err.message)
+                    throw new ApiError(err.message, {
+                        status: response.status,
+                    })
                 }
             } catch (error) {
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                    return
+                ApiUtils.reportError(error)
+                if (error instanceof ApiError && !error.isAborted) {
+                    router.push(`components/${id}`)
                 }
-                const message = error instanceof Error ? error.message : String(error)
-                MessageService.error(message)
-                router.push(`components/${id}`)
             }
         })()
 
@@ -181,6 +166,8 @@ function MergeOverview({
                         <MergeComponent
                             targetComponent={targetComponent}
                             sourceComponent={sourceComponent}
+                            setTargetComponent={setTargetComponent}
+                            setSourceComponent={setSourceComponent}
                             finalComponentPayload={finalComponentPayload}
                             setFinalComponentPayload={setFinalComponentPayload}
                         />

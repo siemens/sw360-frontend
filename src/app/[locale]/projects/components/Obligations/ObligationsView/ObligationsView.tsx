@@ -9,11 +9,11 @@
 
 'use client'
 
-import { signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
-import { Dispatch, type JSX, SetStateAction, useEffect } from 'react'
+import { Dispatch, type JSX, SetStateAction } from 'react'
 import { Tab, Tabs } from 'react-bootstrap'
 import { ActionType, ObligationEntry, ObligationType } from '@/object-types'
+import AllObligations from './AllObligations'
 import LicenseObligation from './LicenseObligation'
 import ObligationTab from './ObligationTab'
 
@@ -26,15 +26,6 @@ interface Props {
 
 export default function ObligationView({ projectId, actionType, payload, setPayload }: Props): JSX.Element {
     const t = useTranslations('default')
-    const { status } = useSession()
-
-    useEffect(() => {
-        if (status === 'unauthenticated') {
-            void signOut()
-        }
-    }, [
-        status,
-    ])
 
     return (
         <Tabs
@@ -43,6 +34,14 @@ export default function ObligationView({ projectId, actionType, payload, setPayl
             mountOnEnter={true}
             unmountOnExit={true}
         >
+            {actionType === ActionType.DETAIL && (
+                <Tab
+                    eventKey='all-obligations'
+                    title={t('All Obligations')}
+                >
+                    <AllObligations projectId={projectId} />
+                </Tab>
+            )}
             <Tab
                 eventKey='license-obligation'
                 title={t('License Obligation')}

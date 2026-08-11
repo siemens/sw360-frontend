@@ -13,7 +13,6 @@ import { ColumnDef, ExpandedState, getCoreRowModel, getExpandedRowModel, useReac
 import { StatusCodes } from 'http-status-codes'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { PaddedCell, SW360Table } from 'next-sw360'
 import { ReactNode, useEffect, useMemo, useState } from 'react'
@@ -32,8 +31,8 @@ import {
     TypedEntity,
     UserGroupType,
 } from '@/object-types'
-import MessageService from '@/services/message.service'
-import { ApiUtils, CommonUtils } from '@/utils'
+import { ApiError, CommonUtils } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
 import DownloadLicenseInfoModal from './DownloadLicenseInfoModal'
 import LicenseInfoDownloadConfirmationModal from './LicenseInfoDownloadConfirmation'
 
@@ -268,6 +267,19 @@ const buildTable = (
     return tableData
 }
 
+const fetchReleaseRelationsFromLinkedProjects = (linkedProjects: Project[], filters: string[]) => {
+    for (const p of linkedProjects) {
+        for (const l of p.linkedReleases ?? []) {
+            const ind = filters.indexOf(l.relation)
+
+            if (ind === -1) {
+                filters.push(l.relation)
+            }
+        }
+        fetchReleaseRelationsFromLinkedProjects(p._embedded?.['sw360:linkedProjects'] ?? [], filters)
+    }
+}
+
 function GenerateLicenseInfo({
     projectId,
 }: Readonly<{
@@ -288,15 +300,7 @@ function GenerateLicenseInfo({
     const [key, setKey] = useState<string>('show_all')
     const [showConfirmation, setShowConfirmation] = useState(false)
     const [isCalledFromProjectLicenseTab, setIsCalledFromProjectLicenseTab] = useState<boolean>(false)
-
-    const session = useSession()
-    useEffect(() => {
-        if (session.status === 'unauthenticated') {
-            void signOut()
-        }
-    }, [
-        session,
-    ])
+    const [projectRelationships, setProjectRelationships] = useState<string[]>([])
 
     const [expandedState, setExpandedState] = useState<ExpandedState>({})
     const [showProcessing, setShowProcessing] = useState(false)
@@ -333,6 +337,24 @@ function GenerateLicenseInfo({
             licenses,
         ],
     )
+
+    useEffect(() => {
+        if (!project || !memoizedLinkedProjects) return
+
+        const filters: string[] = []
+
+        for (const l of project.linkedReleases ?? []) {
+            const ind = filters.indexOf(l.relation)
+
+            if (ind === -1) {
+                filters.push(l.relation)
+            }
+        }
+        fetchReleaseRelationsFromLinkedProjects(project._embedded?.['sw360:linkedProjects'] ?? [], filters)
+        setProjectRelationships(filters)
+    }, [
+        project,
+    ])
 
     const columns = useMemo<
         ColumnDef<ExtendedNestedRows<TypedAttachment | TypedRelease | TypedProject | TypedLicense>>[]
@@ -638,7 +660,7 @@ function GenerateLicenseInfo({
             },
             {
                 id: 'uploadedBy',
-                header: t('Uploaded By'),
+                header: t('Uploaded by'),
                 cell: ({ row }) => {
                     if (row.original.node.type === 'attachment') {
                         return (
@@ -726,7 +748,6 @@ function GenerateLicenseInfo({
     }, [])
 
     useEffect(() => {
-        if (session.status === 'loading') return
         const controller = new AbortController()
         const signal = controller.signal
 
@@ -737,43 +758,44 @@ function GenerateLicenseInfo({
 
         void (async () => {
             try {
-                if (CommonUtils.isNullOrUndefined(session.data)) return signOut()
                 const searchParams = Object.fromEntries(params)
                 if (Object.hasOwn(searchParams, 'withSubProjects') === false) {
                     return
                 }
                 const requests = [
-                    ApiUtils.GET(`projects/${projectId}`, session.data.user.access_token, signal),
+                    ApiUtils.GET(`projects/${projectId}`, signal),
                 ]
                 if (searchParams.withSubProjects === 'true') {
                     requests.push(
                         ApiUtils.GET(
                             `projects/${projectId}/attachmentUsage?transitive=true&filter=withCliAttachment`,
-                            session.data.user.access_token,
                             signal,
                         ),
-                        ApiUtils.GET(
-                            `projects/${projectId}/linkedProjects?transitive=true`,
-                            session.data.user.access_token,
-                            signal,
-                        ),
+                        ApiUtils.GET(`projects/${projectId}/linkedProjects?transitive=true`, signal),
                     )
                 } else {
                     requests.push(
                         ApiUtils.GET(
                             `projects/${projectId}/attachmentUsage?transitive=false&filter=withCliAttachment`,
-                            session.data.user.access_token,
                             signal,
                         ),
                     )
                 }
                 const responses = await Promise.all(requests)
-                responses.map(async (r) => {
+                for (const r of responses) {
                     if (r.status !== StatusCodes.OK) {
-                        const err = (await r.json()) as ErrorDetails
-                        throw new Error(err.message)
+                        let message = `Request failed with status ${r.status}`
+                        try {
+                            const err = (await r.json()) as ErrorDetails
+                            message = err.message
+                        } catch {
+                            // Response body is not valid JSON
+                        }
+                        throw new ApiError(message, {
+                            status: r.status,
+                        })
                     }
-                })
+                }
 
                 const proj = (await responses[0].json()) as Project
                 setProject(proj)
@@ -792,11 +814,7 @@ function GenerateLicenseInfo({
                     const relId = r._links?.self.href.split('/').at(-1) ?? ''
                     for (const att of r.attachments ?? []) {
                         licenseRequests.push(
-                            ApiUtils.GET(
-                                `releases/${relId}/licenseData/${att.attachmentContentId}`,
-                                session.data.user.access_token,
-                                signal,
-                            ),
+                            ApiUtils.GET(`releases/${relId}/licenseData/${att.attachmentContentId}`, signal),
                         )
                     }
                 }
@@ -805,7 +823,9 @@ function GenerateLicenseInfo({
                 licenseResponses.map(async (r) => {
                     if (r.status !== StatusCodes.OK) {
                         const err = (await r.json()) as ErrorDetails
-                        throw new Error(err.message)
+                        throw new ApiError(err.message, {
+                            status: r.status,
+                        })
                     }
                 })
                 const _licenses = licenseResponses.map(async (licRes) => (await licRes.json()) as License[])
@@ -837,7 +857,7 @@ function GenerateLicenseInfo({
 
                 for (const r of attachmentUsages['_embedded']['sw360:release']) {
                     for (const att of r.attachments ?? []) {
-                        const usages = attachmentUsages['_embedded']['sw360:attachmentUsages'][0].filter(
+                        const usages = attachmentUsages['_embedded']['sw360:attachmentUsages'].filter(
                             (elem: AttachmentUsage) => elem.attachmentContentId === att.attachmentContentId,
                         )
                         for (const u of usages) {
@@ -869,11 +889,7 @@ function GenerateLicenseInfo({
                 }
                 setSaveUsagesPayload(saveUsages)
             } catch (error) {
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                    return
-                }
-                const message = error instanceof Error ? error.message : String(error)
-                MessageService.error(message)
+                ApiUtils.reportError(error)
             } finally {
                 clearTimeout(timeout)
                 setShowProcessing(false)
@@ -912,133 +928,130 @@ function GenerateLicenseInfo({
         saveUsagesPayload,
     ])
 
-    if (project === undefined) {
-        return (
-            <div className='col-12 mt-3 text-center'>
-                <Spinner className='spinner' />
-            </div>
-        )
-    } else {
-        return (
-            <>
-                <DownloadLicenseInfoModal
-                    show={show}
-                    setShow={setShow}
-                    saveUsagesPayload={saveUsagesPayload}
-                    setShowConfirmation={setShowConfirmation}
-                    projectId={projectId}
-                    isCalledFromProjectLicenseTab={isCalledFromProjectLicenseTab}
-                />
-                <LicenseInfoDownloadConfirmationModal
-                    show={showConfirmation}
-                    setShow={setShowConfirmation}
-                />
-                <div className='container page-content'>
-                    <div className='row'>
-                        <div className='row d-flex justify-content-between'>
-                            <div className='col-auto buttonheader-title'>{t('GENERATE LICENSE INFORMATION')}</div>
-                            <div className='col-auto text-truncate buttonheader-title'>
-                                {project.name} {project.version !== undefined && `(${project.version})`}
-                            </div>
+    return (
+        <>
+            <DownloadLicenseInfoModal
+                show={show}
+                setShow={setShow}
+                saveUsagesPayload={saveUsagesPayload}
+                setShowConfirmation={setShowConfirmation}
+                projectId={projectId}
+                isCalledFromProjectLicenseTab={isCalledFromProjectLicenseTab}
+                projectRelationships={projectRelationships}
+            />
+            <LicenseInfoDownloadConfirmationModal
+                show={showConfirmation}
+                setShow={setShowConfirmation}
+            />
+            <div className='container page-content'>
+                <div className='row'>
+                    <div className='row d-flex justify-content-between'>
+                        <div className='col-auto buttonheader-title'>
+                            {isCalledFromProjectLicenseTab
+                                ? t('GENERATE LICENSE INFORMATION')
+                                : t('CREATE PROJECT CLEARING REPORT')}
                         </div>
-                        <div className='col-lg-12'>
-                            {data ? (
-                                <Tab.Container
-                                    id='show_all'
-                                    activeKey={key}
-                                    onSelect={(k) => setKey(k === null ? 'show_all' : k)}
-                                >
-                                    <div className='col ps-0'>
-                                        <Nav
-                                            variant='pills'
-                                            className='d-inline-flex'
-                                        >
-                                            <Nav.Item>
-                                                <Button
-                                                    variant='primary'
-                                                    className='me-2 py-2 col-auto'
-                                                    onClick={() => setShow(true)}
-                                                >
-                                                    {t('Download')}{' '}
-                                                </Button>
-                                            </Nav.Item>
-                                            <Nav.Item>
-                                                <Button
-                                                    variant={hideWithUsage ? 'secondary' : 'outline-secondary'}
-                                                    className='me-2 py-2 col-auto'
-                                                    onClick={() => setHideWithUsage(!hideWithUsage)}
-                                                >
-                                                    {hideWithUsage
-                                                        ? t('Show All Releases')
-                                                        : t('Hide Releases With Usage Set')}
-                                                </Button>
-                                            </Nav.Item>
-                                            <Nav.Item>
-                                                <Nav.Link eventKey='show_all'>
-                                                    <span className='fw-medium'>{t('Show All')}</span>
-                                                </Nav.Link>
-                                            </Nav.Item>
-                                            <Nav.Item>
-                                                <Nav.Link eventKey='only_approved'>
-                                                    <span className='fw-medium'>{t('Only Approved')}</span>
-                                                </Nav.Link>
-                                            </Nav.Item>
-                                        </Nav>
-                                    </div>
-                                    <div
-                                        className='subscriptionBox my-2'
-                                        style={{
-                                            maxWidth: '98vw',
-                                            textAlign: 'left',
-                                            fontSize: '15px',
-                                        }}
-                                    >
-                                        {t(
-                                            'No previous selection found If you have writing permissions to this project your selection will be stored automatically when downloading',
-                                        )}
-                                    </div>
-                                    <Tab.Content className='mt-3'>
-                                        <Tab.Pane eventKey='show_all'>
-                                            <div className='mb-3'>
-                                                {table ? (
-                                                    <SW360Table
-                                                        table={table}
-                                                        showProcessing={showProcessing}
-                                                    />
-                                                ) : (
-                                                    <div className='col-12 mt-1 text-center'>
-                                                        <Spinner className='spinner' />
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </Tab.Pane>
-                                        <Tab.Pane eventKey='only_approved'>
-                                            <div className='mb-3'>
-                                                {table ? (
-                                                    <SW360Table
-                                                        table={table}
-                                                        showProcessing={showProcessing}
-                                                    />
-                                                ) : (
-                                                    <div className='col-12 mt-1 text-center'>
-                                                        <Spinner className='spinner' />
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </Tab.Pane>
-                                    </Tab.Content>
-                                </Tab.Container>
-                            ) : (
-                                <div className='col-12 text-center'>
-                                    <Spinner className='spinner' />
-                                </div>
-                            )}
+                        <div className='col-auto text-truncate buttonheader-title'>
+                            {project && `${project.name} ${project.version !== undefined && `(${project.version})`}`}
                         </div>
                     </div>
+                    <div className='col-lg-12'>
+                        {data ? (
+                            <Tab.Container
+                                id='show_all'
+                                activeKey={key}
+                                onSelect={(k) => setKey(k === null ? 'show_all' : k)}
+                            >
+                                <div className='col ps-0'>
+                                    <Nav
+                                        variant='pills'
+                                        className='d-inline-flex'
+                                    >
+                                        <Nav.Item>
+                                            <Button
+                                                variant='primary'
+                                                className='me-2 py-2 col-auto'
+                                                onClick={() => setShow(true)}
+                                            >
+                                                {t('Download')}{' '}
+                                            </Button>
+                                        </Nav.Item>
+                                        <Nav.Item>
+                                            <Button
+                                                variant={hideWithUsage ? 'secondary' : 'outline-secondary'}
+                                                className='me-2 py-2 col-auto'
+                                                onClick={() => setHideWithUsage(!hideWithUsage)}
+                                            >
+                                                {hideWithUsage
+                                                    ? t('Show All Releases')
+                                                    : t('Hide Releases With Usage Set')}
+                                            </Button>
+                                        </Nav.Item>
+                                        <Nav.Item>
+                                            <Nav.Link eventKey='show_all'>
+                                                <span className='fw-medium'>{t('Show All')}</span>
+                                            </Nav.Link>
+                                        </Nav.Item>
+                                        <Nav.Item>
+                                            <Nav.Link eventKey='only_approved'>
+                                                <span className='fw-medium'>{t('Only Approved')}</span>
+                                            </Nav.Link>
+                                        </Nav.Item>
+                                    </Nav>
+                                </div>
+                                <div
+                                    className='subscriptionBox my-2'
+                                    style={{
+                                        maxWidth: '98vw',
+                                        textAlign: 'left',
+                                        fontSize: '15px',
+                                    }}
+                                >
+                                    {t(
+                                        'No previous selection found If you have writing permissions to this project your selection will be stored automatically when downloading',
+                                    )}
+                                </div>
+                                <Tab.Content className='mt-3'>
+                                    <Tab.Pane eventKey='show_all'>
+                                        <div className='mb-3'>
+                                            {table ? (
+                                                <SW360Table
+                                                    table={table}
+                                                    showProcessing={showProcessing}
+                                                />
+                                            ) : (
+                                                <div className='col-12 mt-1 text-center'>
+                                                    <Spinner className='spinner' />
+                                                </div>
+                                            )}
+                                        </div>
+                                    </Tab.Pane>
+                                    <Tab.Pane eventKey='only_approved'>
+                                        <div className='mb-3'>
+                                            {table ? (
+                                                <SW360Table
+                                                    table={table}
+                                                    showProcessing={showProcessing}
+                                                />
+                                            ) : (
+                                                <div className='col-12 mt-1 text-center'>
+                                                    <Spinner className='spinner' />
+                                                </div>
+                                            )}
+                                        </div>
+                                    </Tab.Pane>
+                                </Tab.Content>
+                            </Tab.Container>
+                        ) : (
+                            <div className='col-12 text-center'>
+                                <Spinner className='spinner' />
+                            </div>
+                        )}
+                    </div>
                 </div>
-            </>
-        )
-    }
+            </div>
+        </>
+    )
 }
 
 // Pass notAllowedUserGroups to AccessControl to restrict access

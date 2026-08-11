@@ -9,7 +9,6 @@
 
 'use client'
 
-import { signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { type JSX, useEffect, useState } from 'react'
 import { OverlayTrigger, Tooltip } from 'react-bootstrap'
@@ -36,12 +35,12 @@ function AddAdditionalRoles({
     const [inputListData, setInputListData] = useState<InputKeyValue[]>([])
     const [isDeleteItem, setIsDeleteItem] = useState<boolean>(false)
     const [currentIndex, setCurrentIndex] = useState<number>(-1)
-    const { status } = useSession()
 
-    // Configs from backend
+    // Configs from backend - call hooks unconditionally
+    const configProjectRoles = useConfigValue(UIConfigKeys.UI_CUSTOMMAP_PROJECT_ROLES)
     const projectAdditionalRoles =
-        useConfigValue(UIConfigKeys.UI_CUSTOMMAP_PROJECT_ROLES) !== null
-            ? (useConfigValue(UIConfigKeys.UI_CUSTOMMAP_PROJECT_ROLES) as string[])
+        configProjectRoles !== null
+            ? (configProjectRoles as string[])
             : [
                   'Stakeholder',
                   'Analyst',
@@ -53,30 +52,24 @@ function AddAdditionalRoles({
                   'Technical Writer',
                   'Key User',
               ]
+    const configComponentRoles = useConfigValue(UIConfigKeys.UI_CUSTOMMAP_COMPONENT_ROLES)
     const componentAdditionalRoles =
-        useConfigValue(UIConfigKeys.UI_CUSTOMMAP_COMPONENT_ROLES) !== null
-            ? (useConfigValue(UIConfigKeys.UI_CUSTOMMAP_COMPONENT_ROLES) as string[])
+        configComponentRoles !== null
+            ? (configComponentRoles as string[])
             : [
                   'Committer',
                   'Contributor',
                   'Expert',
               ]
+    const configReleaseRoles = useConfigValue(UIConfigKeys.UI_CUSTOMMAP_RELEASE_ROLES)
     const releaseAdditionalRoles =
-        useConfigValue(UIConfigKeys.UI_CUSTOMMAP_RELEASE_ROLES) !== null
-            ? (useConfigValue(UIConfigKeys.UI_CUSTOMMAP_RELEASE_ROLES) as string[])
+        configReleaseRoles !== null
+            ? (configReleaseRoles as string[])
             : [
                   'Committer',
                   'Contributor',
                   'Expert',
               ]
-
-    useEffect(() => {
-        if (status === 'unauthenticated') {
-            signOut()
-        }
-    }, [
-        status,
-    ])
 
     useEffect(() => {
         setInputListData(
@@ -134,12 +127,6 @@ function AddAdditionalRoles({
         }
     }
 
-    const defaultValue = () => {
-        return documentType === DocumentTypes.COMPONENT || documentType === DocumentTypes.RELEASE
-            ? 'Committer'
-            : 'Stakeholder'
-    }
-
     return (
         <>
             <DeleteItemWarning
@@ -166,15 +153,13 @@ function AddAdditionalRoles({
                                     key=''
                                     name='key'
                                     value={elem.key}
-                                    aria-label={t('Additional Role')}
-                                    defaultValue={defaultValue()}
+                                    aria-label={t('Additional Roles')}
                                     onChange={(e) => handleInputChange(e, j)}
                                 >
                                     {documentType === DocumentTypes.COMPONENT
                                         ? componentAdditionalRoles.map((value, key) => (
                                               <option
                                                   value={value}
-                                                  selected={elem.key === value}
                                                   key={key}
                                               >
                                                   {value}
@@ -193,7 +178,6 @@ function AddAdditionalRoles({
                                           : projectAdditionalRoles.map((value, key) => (
                                                 <option
                                                     value={value}
-                                                    selected={elem.key === value}
                                                     key={key}
                                                 >
                                                     {value}

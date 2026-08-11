@@ -13,11 +13,11 @@
 import { InputKeyValue, User } from '@/object-types'
 
 /**
- * Checks if the given object is null or undefined.
+ * Checks if the given object is void, null or undefined.
  * @param obj - The object to check.
- * @returns True if the object is null or undefined, false otherwise.
+ * @returns True if the object is void, null or undefined, false otherwise.
  */
-const isNullOrUndefined = (obj: unknown): obj is null | undefined => {
+const isNullOrUndefined = <T>(obj: T | null | undefined | void): obj is null | undefined | void => {
     if (obj === null || obj === undefined) {
         return true
     }
@@ -38,7 +38,7 @@ const isNullEmptyOrUndefinedString = (str: string | undefined | null): str is nu
 }
 
 interface UrlWithParams {
-    [key: string]: string
+    [key: string]: string | string[]
 }
 
 /**
@@ -49,18 +49,27 @@ interface UrlWithParams {
  * @returns The URL with the query parameters.
  */
 const createUrlWithParams = (url: string, params: UrlWithParams): string => {
-    const queryString = Object.keys(params)
-        .filter((key) => params[key])
-        .map((key) => {
-            return [
-                key,
-                params[key],
-            ]
-                .map(encodeURIComponent)
-                .join('=')
-        })
-        .join('&')
-    return `${url}?${queryString}`
+    const queryParts: string[] = []
+
+    Object.keys(params).forEach((key) => {
+        const value = params[key]
+
+        if (Array.isArray(value)) {
+            value.forEach((item) => {
+                if (item !== undefined && item !== null && item !== '') {
+                    queryParts.push(`${encodeURIComponent(key)}=${encodeURIComponent(item)}`)
+                }
+            })
+        } else {
+            queryParts.push(`${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+        }
+    })
+
+    if (queryParts.length === 0) {
+        return url // No parameters to add
+    }
+
+    return `${url}?${queryParts.join('&')}`
 }
 
 /**
@@ -105,6 +114,8 @@ const getEmailsModerators = (users: User[]): string[] => {
 
 /**
  * Converts an object to a map of key-value pairs.
+ * Special handling for 'package-url' key: if the value is a JSON array string,
+ * it will be expanded into multiple entries with the same key.
  * @param data - The object to convert.
  * @returns An array of key-value pairs.
  */
@@ -112,6 +123,23 @@ const convertObjectToMap = (data: { [k: string]: string }): InputKeyValue[] => {
     const map = new Map(Object.entries(data))
     const inputs: InputKeyValue[] = []
     map.forEach((value, key) => {
+        // Special handling for package-url: expand JSON array into multiple entries
+        if (key === 'package-url' && value.trimStart().startsWith('[')) {
+            try {
+                const urls = JSON.parse(value) as string[]
+                if (Array.isArray(urls)) {
+                    urls.forEach((url) => {
+                        inputs.push({
+                            key: key,
+                            value: url,
+                        })
+                    })
+                    return
+                }
+            } catch {
+                // If parsing fails, treat as regular value
+            }
+        }
         const input: InputKeyValue = {
             key: key,
             value: value,

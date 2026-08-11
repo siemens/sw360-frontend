@@ -10,9 +10,8 @@
 // License-Filename: LICENSE
 
 'use client'
-import { signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
-import { ReactNode, useEffect } from 'react'
+import { ReactNode } from 'react'
 import { LicensePayload } from '@/object-types'
 
 interface Props {
@@ -23,15 +22,6 @@ interface Props {
 
 const AddLicenseText = ({ licensePayload, setLicensePayload, inputValid }: Props): ReactNode => {
     const t = useTranslations('default')
-    const { status } = useSession()
-
-    useEffect(() => {
-        if (status === 'unauthenticated') {
-            signOut()
-        }
-    }, [
-        status,
-    ])
 
     const updateField = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         setLicensePayload({
@@ -48,7 +38,7 @@ const AddLicenseText = ({ licensePayload, setLicensePayload, inputValid }: Props
             }}
         >
             <div
-                className='header mb-1'
+                className='header mb-2'
                 style={{
                     paddingTop: '0.5rem',
                     height: '45px',

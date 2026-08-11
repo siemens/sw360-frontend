@@ -12,16 +12,17 @@
 import { StatusCodes } from 'http-status-codes'
 import Link from 'next/link'
 import { notFound, useParams, useRouter } from 'next/navigation'
-import { getSession, signOut, useSession } from 'next-auth/react'
+
 import { useTranslations } from 'next-intl'
 import { ShowInfoOnHover } from 'next-sw360'
 import { ReactNode, useEffect, useState } from 'react'
 import { Breadcrumb, Button, Card, Col, Collapse, Row, Spinner, Tab } from 'react-bootstrap'
-
 import { AccessControl } from '@/components/AccessControl/AccessControl'
 import { ClearingRequestDetails, UpdateClearingRequestPayload, UserGroupType } from '@/object-types'
 import MessageService from '@/services/message.service'
-import { ApiUtils, CommonUtils } from '@/utils/index'
+import { CommonUtils } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
+import { dispatchSessionExpiredEvent } from '@/utils/sessionExpiry.utils'
 import ClearingComments from './../../../detail/[id]/components/ClearingComments'
 import EditClearingDecision from './EditClearingDecision'
 import EditClearingRequestInfo from './EditClearingRequestInfo'
@@ -30,7 +31,6 @@ function EditClearingRequest({ clearingRequestId }: { clearingRequestId: string 
     const t = useTranslations('default')
     const [openCardIndex, setOpenCardIndex] = useState<number>(0)
     const router = useRouter()
-    const { status } = useSession()
     const [clearingRequestData, setClearingRequestData] = useState<ClearingRequestDetails | undefined>()
     const [updateClearingRequestPayload, setUpdateClearingRequestPayload] = useState<UpdateClearingRequestPayload>({
         clearingType: '',
@@ -44,23 +44,13 @@ function EditClearingRequest({ clearingRequestId }: { clearingRequestId: string 
     const locale = (param.locale as string) || 'en'
     const requestsPath = `/${locale}/requests`
 
-    useEffect(() => {
-        if (status === 'unauthenticated') {
-            signOut()
-        }
-    }, [
-        status,
-    ])
-
     const fetchData = async (url: string) => {
-        const session = await getSession()
-        if (CommonUtils.isNullOrUndefined(session)) return signOut()
-        const response = await ApiUtils.GET(url, session.user.access_token)
+        const response = await ApiUtils.GET(url)
         if (response.status == StatusCodes.OK) {
             const data = (await response.json()) as ClearingRequestDetails
             return data
         } else if (response.status == StatusCodes.UNAUTHORIZED) {
-            return signOut()
+            return dispatchSessionExpiredEvent()
         } else {
             notFound()
         }
@@ -68,8 +58,10 @@ function EditClearingRequest({ clearingRequestId }: { clearingRequestId: string 
 
     useEffect(() => {
         void fetchData(`clearingrequest/${clearingRequestId}`).then(
-            (clearingRequestDetails: ClearingRequestDetails | undefined) => {
-                setClearingRequestData(clearingRequestDetails)
+            (clearingRequestDetails: ClearingRequestDetails | void) => {
+                if (!CommonUtils.isNullOrUndefined(clearingRequestDetails)) {
+                    setClearingRequestData(clearingRequestDetails)
+                }
             },
         )
     }, [
@@ -92,13 +84,10 @@ function EditClearingRequest({ clearingRequestId }: { clearingRequestId: string 
     ])
 
     const handleUpdateClearingRequest = async () => {
-        const session = await getSession()
-        if (CommonUtils.isNullOrUndefined(session)) return signOut()
         try {
             const response = await ApiUtils.PATCH(
                 `clearingrequest/${clearingRequestData?.id}`,
                 updateClearingRequestPayload,
-                session.user.access_token,
             )
             if (response.status == StatusCodes.OK) {
                 MessageService.success(
@@ -106,7 +95,10 @@ function EditClearingRequest({ clearingRequestId }: { clearingRequestId: string 
                 )
                 router.push(`/requests/clearingRequest/detail/${clearingRequestData?.id}`)
             } else if (response.status == StatusCodes.UNAUTHORIZED) {
-                await signOut()
+                dispatchSessionExpiredEvent()
+            } else {
+                const data = await response.json()
+                MessageService.error(data.message)
             }
         } catch (err) {
             console.error(err)
@@ -169,7 +161,7 @@ function EditClearingRequest({ clearingRequestId }: { clearingRequestId: string 
                                         </Col>
                                     </Row>
                                     <Row className='mt-3'>
-                                        <Card className='request-card'>
+                                        <Card className='w-100 px-0'>
                                             <div
                                                 onClick={() => toggleCollapse(0)}
                                                 style={{
@@ -177,15 +169,10 @@ function EditClearingRequest({ clearingRequestId }: { clearingRequestId: string 
                                                     padding: '0',
                                                 }}
                                             >
-                                                <Card.Header
-                                                    className={
-                                                        openCardIndex === 0 ? 'request-card-header-expanded' : ''
-                                                    }
-                                                    id='request-card-header'
-                                                >
+                                                <Card.Header id='cardHeader'>
                                                     <Button
                                                         variant='button'
-                                                        className='p-0 border-0 request-header-button'
+                                                        className={`p-0 border-0 header-button`}
                                                         aria-controls='example-collapse-text-1'
                                                         aria-expanded={openCardIndex === 0}
                                                     >
@@ -208,7 +195,7 @@ function EditClearingRequest({ clearingRequestId }: { clearingRequestId: string 
                                             </div>
                                             <Collapse in={openCardIndex === 0}>
                                                 <div id='example-collapse-text-1'>
-                                                    <Card.Body className='request-card-body'>
+                                                    <Card.Body className='bg-white'>
                                                         <div className='row'>
                                                             <div className='col'>
                                                                 <EditClearingRequestInfo
@@ -239,7 +226,7 @@ function EditClearingRequest({ clearingRequestId }: { clearingRequestId: string 
                                         </Card>
                                     </Row>
                                     <Row>
-                                        <Card className='request-card'>
+                                        <Card className='w-100 px-0'>
                                             <div
                                                 onClick={() => toggleCollapse(1)}
                                                 style={{
@@ -247,15 +234,10 @@ function EditClearingRequest({ clearingRequestId }: { clearingRequestId: string 
                                                     padding: '0',
                                                 }}
                                             >
-                                                <Card.Header
-                                                    className={
-                                                        openCardIndex === 1 ? 'request-card-header-expanded' : ''
-                                                    }
-                                                    id='request-card-header'
-                                                >
+                                                <Card.Header id='cardHeader'>
                                                     <Button
                                                         variant='button'
-                                                        className='p-0 border-0 request-header-button'
+                                                        className={`p-0 border-0 header-button`}
                                                         aria-controls='example-collapse-text-2'
                                                         aria-expanded={openCardIndex === 1}
                                                     >
@@ -267,7 +249,7 @@ function EditClearingRequest({ clearingRequestId }: { clearingRequestId: string 
                                             </div>
                                             <Collapse in={openCardIndex === 1}>
                                                 <div id='example-collapse-text-2'>
-                                                    <Card.Body className='request-card-body'>
+                                                    <Card.Body className='bg-white'>
                                                         <div>
                                                             <div className='col'>
                                                                 {openCardIndex === 1 && (

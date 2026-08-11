@@ -1,5 +1,6 @@
 // Copyright (C) TOSHIBA CORPORATION, 2023. Part of the SW360 Frontend Project.
 // Copyright (C) Toshiba Software Development (Vietnam) Co., Ltd., 2023. Part of the SW360 Frontend Project.
+// Copyright (C) Siemens AG, 2026. Part of the SW360 Frontend Project.
 
 // This program and the accompanying materials are made
 // available under the terms of the Eclipse Public License 2.0
@@ -11,17 +12,20 @@
 'use client'
 
 import { StatusCodes } from 'http-status-codes'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { signIn, useSession } from 'next-auth/react'
 import { useLocale, useTranslations } from 'next-intl'
 import { LanguageSwitcher, PageSpinner } from 'next-sw360'
-import { ReactNode, useState } from 'react'
-import { Alert, Button, Form, Modal } from 'react-bootstrap'
+import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { Alert, Button, Form, InputGroup, Modal } from 'react-bootstrap'
+import { BsEye, BsEyeSlash } from 'react-icons/bs'
 import { CREDENTIALS, KEYCLOAK_PROVIDER, SW360OAUTH_PROVIDER } from '@/constants'
+import { resolveAuthCallbackUrl } from '@/utils/authRedirect.utils'
 import { AUTH_PROVIDER } from '@/utils/env'
 
 function AuthScreen(): ReactNode {
     const router = useRouter()
+    const searchParams = useSearchParams()
     const locale = useLocale()
     const t = useTranslations('default')
     const [dialogShow, setDialogShow] = useState<boolean>(false)
@@ -29,36 +33,66 @@ function AuthScreen(): ReactNode {
     const [emailAddress, setEmailAddress] = useState<string>('@sw360.org')
     const [password, setPassword] = useState<string>('')
     const { status } = useSession()
+    const [showPassword, setShowPassword] = useState<boolean>(false)
+    const rawCallbackUrl = searchParams.get('callbackUrl')
+    const origin = typeof window === 'undefined' ? undefined : window.location.origin
+    const callbackUrl = useMemo(
+        () => resolveAuthCallbackUrl(rawCallbackUrl, locale, origin),
+        [
+            locale,
+            origin,
+            rawCallbackUrl,
+        ],
+    )
+    const isRedirectingToCallback = status === 'authenticated' && rawCallbackUrl !== null
 
     const handleClose = () => setDialogShow(false)
+
+    useEffect(() => {
+        if (isRedirectingToCallback) {
+            router.replace(callbackUrl)
+        }
+    }, [
+        callbackUrl,
+        isRedirectingToCallback,
+        router,
+    ])
+
     const handleShow = () => {
         const authProvider = AUTH_PROVIDER
         if (authProvider === 'keycloak') {
-            void signIn(KEYCLOAK_PROVIDER)
+            void signIn(KEYCLOAK_PROVIDER, {
+                callbackUrl,
+            })
         } else if (authProvider === 'sw360oauth') {
-            void signIn(SW360OAUTH_PROVIDER)
+            void signIn(SW360OAUTH_PROVIDER, {
+                callbackUrl,
+            })
         } else {
             setDialogShow(true)
         }
     }
 
     const handleLogin = async () => {
-        await signIn(CREDENTIALS, {
+        const result = await signIn(CREDENTIALS, {
             username: emailAddress,
             password: password,
             redirect: false,
-        }).then((result) => {
-            if (result === undefined) {
-                setMessageShow(true)
-                return
-            }
-
-            if (result.status === StatusCodes.OK) {
-                router.push(`/${locale}/home`)
-            } else {
-                setMessageShow(true)
-            }
+            callbackUrl,
         })
+
+        if (result === undefined) {
+            setMessageShow(true)
+            return
+        }
+
+        if (result.status === StatusCodes.OK) {
+            const resolvedResultUrl = resolveAuthCallbackUrl(result.url, locale, origin)
+            router.replace(resolvedResultUrl)
+            return
+        }
+
+        setMessageShow(true)
     }
 
     return (
@@ -68,7 +102,7 @@ function AuthScreen(): ReactNode {
                 id='portlet_sw360_portlet_welcome'
             >
                 <div>
-                    {status == 'loading' ? (
+                    {status === 'loading' || isRedirectingToCallback ? (
                         <PageSpinner />
                     ) : (
                         <div className='authscreen'>
@@ -102,7 +136,7 @@ function AuthScreen(): ReactNode {
                                             <Button
                                                 variant='primary'
                                                 size='lg'
-                                                href='/home'
+                                                href={callbackUrl}
                                             >
                                                 {t('Start')}
                                             </Button>
@@ -145,14 +179,26 @@ function AuthScreen(): ReactNode {
                                 required
                             />
                         </Form.Group>
-                        <Form.Group className='mb-3'>
+                        <Form.Group
+                            className='mb-3'
+                            controlId='formBasicPassword'
+                        >
                             <Form.Label>{t('Password')}</Form.Label>
-                            <Form.Control
-                                type='password'
-                                placeholder=''
-                                onChange={(event) => setPassword(event.target.value)}
-                                required
-                            />
+                            <InputGroup>
+                                <Form.Control
+                                    type={showPassword ? 'text' : 'password'}
+                                    placeholder=''
+                                    onChange={(event) => setPassword(event.target.value)}
+                                    required
+                                />
+                                <Button
+                                    variant='outline-secondary'
+                                    onClick={() => setShowPassword(!showPassword)}
+                                    id='button-addon2'
+                                >
+                                    {showPassword ? <BsEye /> : <BsEyeSlash />}
+                                </Button>
+                            </InputGroup>
                         </Form.Group>
                     </Form>
                 </Modal.Body>

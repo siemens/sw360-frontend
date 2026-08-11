@@ -27,12 +27,35 @@ import ComponentPayload from './ComponentPayLoad'
 import Configuration from './Configuration'
 import CreateClearingRequestPayload from './CreateClearingRequestPayload'
 import CVEReference from './CVEReference'
+import AttachmentTypes from './constants/AttachmentTypes'
+import CommonTabIds from './constants/CommonTabsIds'
+import ComponentTabIds from './constants/ComponentTabIds'
+import ConfigurationContainers from './constants/ConfigurationContainers'
+import LicenseTabIds from './constants/LicenseTabIds'
+// Enums + Constants
+import MaxEntries from './constants/PaginationDefaults'
+import ReleaseTabIds from './constants/ReleaseTabIds'
 import ImportSBOMMetadata from './cyclonedx/ImportSBOMMetadata'
 import ImportSummary from './cyclonedx/ImportSummary'
 import ECCInterface from './ECC'
 import ECCInformation from './ECCInformation'
 import Embedded from './Embedded'
+import ActionType from './enums/ActionType'
+import ClearingRequestStates from './enums/ClearingRequestStates'
+import ConfigKeys from './enums/ConfigKeys'
+import DocumentTypes from './enums/DocumentTypes'
+import MergeOrSplitActionType from './enums/MergeOrSplitActionType'
+import ObligationType from './enums/ObligationType'
+import ProjectVulnerabilityTabType from './enums/ProjectVulnerabilityTabType'
+import ReleaseClearingStateMapping from './enums/ReleaseClearingStateMapping'
+import RequestDocumentTypes from './enums/RequestDocumentTypes'
+import RequestType from './enums/RequestType'
+import { ArrayTypeUIConfigKeys, UIConfigKeys } from './enums/UIConfigKeys'
+import UserGroupPriority from './enums/UserGroupPriority'
+import UserGroupType from './enums/UserGroupType'
+import VulnerabilitiesVerificationState from './enums/VulnerabilitiesVerificationState'
 import ErrorDetails from './error'
+import { FileList, SrcFileList } from './FileList'
 import FossologyConfig from './FossologyConfig'
 import FossologyProcessInfo from './FossologyProcessInfo'
 import FossologyProcessStatus from './FossologyProcessStatus'
@@ -62,12 +85,14 @@ import Package from './Package'
 import { ColumnMeta, FilterOption, NestedRows, PageableQueryParam, PaginationMeta, TypedEntity } from './Pageable'
 import Preferences from './Preferences'
 import { Project, ProjectLinkedRelease } from './Project'
+import ProjectDetailTabCounts from './ProjectDetailTabCounts'
 import ProjectPayload from './ProjectPayload'
 import { ProjectData, ProjectVulnerability, VulnerabilityRatingAndActionPayload } from './ProjectVulnerabilityTypes'
 import Release from './Release'
 import ReleaseDetail from './ReleaseDetail'
 import ReleaseLink from './ReleaseLink'
 import ReleaseNode from './ReleaseNode'
+import ReleaseUsages from './ReleaseUsages'
 import Repository from './Repository'
 import RequestContent from './RequestContent'
 import Resources from './Resources'
@@ -75,6 +100,7 @@ import RestrictedResource from './RestrictedResource'
 import RolesType from './RolesType'
 import SearchDuplicatesResponse from './SearchDuplicateResponse'
 import SearchResult from './SearchResult'
+import { ServiceDetail, ServiceDetailsResponse } from './ServiceDetails'
 import Session from './Session'
 import SummaryDataType from './SummaryDataType'
 import Annotations from './spdx/Annotations'
@@ -97,11 +123,13 @@ import SPDXDocument from './spdx/SPDXDocument'
 import ToastData from './ToastData'
 import { ProcessedUiConfig, parseRawUiConfig, UiConfiguration } from './UiConfiguration'
 import UpdateClearingRequestPayload from './UpdateClearingRequestPayload'
+import UpdateCommentModalMetadata from './UpdateCommentModalMetadata'
 import { User, UserPayload } from './User'
 import UserCredentialInfo from './UserCredentialInfo'
 import Vendor from './Vendor'
 import VendorAdvisory from './VendorAdvisory'
 import VerificationStateInfo from './VerificationStateInfo'
+import VersionInfo from './VersionInfo'
 import Vulnerability from './Vulnerability'
 import { ProjectVulnerabilityTrackingStatus, VulnerabilityTrackingStatus } from './VulnerabilityTrackingStatus'
 
@@ -114,8 +142,6 @@ export type {
     AttachmentUsage,
     AttachmentUsages,
     AuthToken,
-    COTSDetails,
-    CVEReference,
     Changelogs,
     CheckSum,
     ClearingDetailsCount,
@@ -123,20 +149,23 @@ export type {
     ClearingRequest,
     ClearingRequestComments,
     ClearingRequestDetails,
+    COTSDetails,
     ColumnMeta,
     Component,
     ComponentPayload,
     Configuration,
     CreateClearingRequestPayload,
     Creator,
+    CVEReference,
     DocumentCreationInformation,
     DocumentState,
-    ECCInterface,
     ECCInformation,
+    ECCInterface,
     Embedded,
     ErrorDetails,
     ExternalDocumentReferences,
     ExternalReference,
+    FileList,
     FilterOption,
     FossologyConfig,
     FossologyProcessInfo,
@@ -180,6 +209,7 @@ export type {
     ProcessedUiConfig,
     Project,
     ProjectData,
+    ProjectDetailTabCounts,
     ProjectLinkedRelease,
     ProjectPayload,
     ProjectVulnerability,
@@ -189,60 +219,42 @@ export type {
     ReleaseDetail,
     ReleaseLink,
     ReleaseNode,
+    ReleaseUsages,
     Repository,
     RequestContent,
     RequestedAction,
     Resources,
     RestrictedResource,
     RolesType,
-    SPDX,
-    SPDXDocument,
     SaveUsagesPayload,
     SearchDuplicatesResponse,
     SearchResult,
+    ServiceDetail,
+    ServiceDetailsResponse,
     Session,
     SnippetInformation,
     SnippetRange,
+    SPDX,
+    SPDXDocument,
+    SrcFileList,
     SummaryDataType,
     ToastData,
     TypedEntity,
     UiConfiguration,
     UpdateClearingRequestPayload,
+    UpdateCommentModalMetadata,
     User,
     UserCredentialInfo,
     UserPayload,
     Vendor,
     VendorAdvisory,
     VerificationStateInfo,
+    VersionInfo,
     Vulnerability,
     VulnerabilityRatingAndActionPayload,
     VulnerabilityTrackingStatus,
 }
-
 // Special functions for populate data
-export { NavList, Preferences, parseRawUiConfig }
-
-// Enums + Constants
-import AttachmentTypes from './constants/AttachmentTypes'
-import CommonTabIds from './constants/CommonTabsIds'
-import ComponentTabIds from './constants/ComponentTabIds'
-import ConfigurationContainers from './constants/ConfigurationContainers'
-import LicenseTabIds from './constants/LicenseTabIds'
-import ReleaseTabIds from './constants/ReleaseTabIds'
-import ActionType from './enums/ActionType'
-import ClearingRequestStates from './enums/ClearingRequestStates'
-import ConfigKeys from './enums/ConfigKeys'
-import DocumentTypes from './enums/DocumentTypes'
-import MergeOrSplitActionType from './enums/MergeOrSplitActionType'
-import ObligationType from './enums/ObligationType'
-import ProjectVulnerabilityTabType from './enums/ProjectVulnerabilityTabType'
-import ReleaseClearingStateMapping from './enums/ReleaseClearingStateMapping'
-import RequestDocumentTypes from './enums/RequestDocumentTypes'
-import RequestType from './enums/RequestType'
-import { ArrayTypeUIConfigKeys, UIConfigKeys } from './enums/UIConfigKeys'
-import UserGroupType from './enums/UserGroupType'
-import VulnerabilitiesVerificationState from './enums/VulnerabilitiesVerificationState'
-
 export {
     ActionType,
     ArrayTypeUIConfigKeys,
@@ -254,14 +266,19 @@ export {
     ConfigurationContainers,
     DocumentTypes,
     LicenseTabIds,
+    MaxEntries,
     MergeOrSplitActionType,
+    NavList,
     ObligationType,
+    Preferences,
     ProjectVulnerabilityTabType,
+    parseRawUiConfig,
     ReleaseClearingStateMapping,
     ReleaseTabIds,
     RequestDocumentTypes,
+    RequestType,
     UIConfigKeys,
+    UserGroupPriority,
     UserGroupType,
     VulnerabilitiesVerificationState,
-    RequestType,
 }

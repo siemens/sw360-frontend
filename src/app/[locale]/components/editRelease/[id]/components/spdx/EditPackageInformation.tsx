@@ -10,7 +10,6 @@
 // License-Filename: LICENSE
 
 'use client'
-import { signOut, useSession } from 'next-auth/react'
 import { ChangeEvent, ReactNode, useEffect, useState } from 'react'
 import { BsFillTrashFill } from 'react-icons/bs'
 import {
@@ -66,15 +65,6 @@ const EditPackageInformation = ({
         value: '',
     })
     const [isPackageSupplier, setIsPackageSupplier] = useState(true)
-    const { status } = useSession()
-
-    useEffect(() => {
-        if (status === 'unauthenticated') {
-            signOut()
-        }
-    }, [
-        status,
-    ])
 
     const handlePackageSupplier = (data: string) => {
         if (data === 'NOASSERTION') {
@@ -286,7 +276,6 @@ const EditPackageInformation = ({
         } else {
             setIsTypeCateGoryEmpty(true)
         }
-        console.log(isTypeCateGoryEmpty)
     }
 
     const addReferences = () => {
@@ -536,7 +525,6 @@ const EditPackageInformation = ({
                 setAllLicensesInformationNone(true)
                 setAllLicensesInformationNoasserttion(false)
             } else if (packageInformation.licenseInfoFromFiles.toString() === 'NOASSERTION') {
-                console.log(allLicensesInformation)
                 setAllLicensesInformation([])
                 setAllLicensesInformationExist(false)
                 setAllLicensesInformationNone(false)

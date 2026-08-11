@@ -11,7 +11,7 @@ import { Attachment, LinkedPackageData, LinkedProjectData, LinkedReleaseData, Re
 
 interface ProjectPayload {
     id?: string
-    name: string
+    name?: string
     version?: string
     visibility?: string
     createdBy?: string
@@ -60,6 +60,8 @@ interface ProjectPayload {
     projectManager?: string
     projectOwner?: string
     securityResponsibles?: string[]
+    enableSvm?: boolean
+    enableVulnerabilitiesDisplay?: boolean
     considerReleasesFromExternalList?: boolean
     packageIds?: {
         [key: string]: LinkedPackageData

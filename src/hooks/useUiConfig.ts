@@ -9,12 +9,11 @@
 
 'use client'
 import { StatusCodes } from 'http-status-codes'
-import { getSession, signOut, useSession } from 'next-auth/react'
-import { useTranslations } from 'next-intl'
-import { useCallback, useEffect, useState } from 'react'
+import { useSession } from 'next-auth/react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ConfigurationContainers, ProcessedUiConfig, parseRawUiConfig, UiConfiguration } from '@/object-types'
-import MessageService from '@/services/message.service'
-import { ApiUtils, CommonUtils } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
+import { dispatchSessionExpiredEvent } from '@/utils/sessionExpiry.utils'
 import { useLocalStorage } from './index'
 
 interface CachedUiConfig {
@@ -26,8 +25,8 @@ export function useUiConfig() {
     const [processedConfig, setProcessedConfig] = useLocalStorage<CachedUiConfig | null>('uiConfig', null)
     const [isLoading, setIsLoading] = useState<boolean>(true)
     const { status } = useSession()
-    const t = useTranslations('default')
     const apiEndpoint = `configurations/container/${ConfigurationContainers.UI_CONFIGURATION}`
+    const hasFetchedRef = useRef(false)
 
     const CACHE_TTL = 15 * 60 * 1000
 
@@ -50,16 +49,13 @@ export function useUiConfig() {
                 return
             }
 
-            setIsLoading(true)
-
-            const session = await getSession()
-            if (CommonUtils.isNullOrUndefined(session)) {
-                MessageService.error(t('Session has expired'))
-                signOut()
+            if (!force && hasFetchedRef.current) {
                 return
             }
 
-            const response = await ApiUtils.GET(apiEndpoint, session.user.access_token)
+            setIsLoading(true)
+            hasFetchedRef.current = true
+            const response = await ApiUtils.GET(apiEndpoint)
             if (response.status == StatusCodes.OK) {
                 const rawData = (await response.json()) as UiConfiguration
                 const processedData = parseRawUiConfig(rawData)
@@ -68,7 +64,7 @@ export function useUiConfig() {
                     timestamp: Date.now(),
                 })
             } else if (response.status == StatusCodes.UNAUTHORIZED) {
-                await signOut()
+                dispatchSessionExpiredEvent()
             } else {
                 setProcessedConfig(null)
             }
@@ -83,12 +79,12 @@ export function useUiConfig() {
     )
 
     useEffect(() => {
-        if (status === 'authenticated') {
+        if (status === 'authenticated' && !hasFetchedRef.current) {
             fetchAndProcessUiConfig()
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [
         status,
-        fetchAndProcessUiConfig,
     ])
 
     useEffect(() => {

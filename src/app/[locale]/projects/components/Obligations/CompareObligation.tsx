@@ -12,15 +12,14 @@
 import { ColumnDef, getCoreRowModel, SortingState, useReactTable } from '@tanstack/react-table'
 import { StatusCodes } from 'http-status-codes'
 import Link from 'next/link'
-import { signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { Dispatch, type JSX, SetStateAction, useEffect, useMemo, useState } from 'react'
 import { Button, Col, Form, Modal, OverlayTrigger, Row, Spinner, Tooltip } from 'react-bootstrap'
 import { BsInfoCircle } from 'react-icons/bs'
 import { PageSizeSelector, SW360Table, TableFooter } from '@/components/sw360'
 import { Embedded, ErrorDetails, PageableQueryParam, PaginationMeta, Project } from '@/object-types'
-import MessageService from '@/services/message.service'
-import { ApiUtils, CommonUtils } from '@/utils'
+import { ApiError, CommonUtils } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
 
 type EmbeddedProjects = Embedded<Project, 'sw360:projects'>
 
@@ -40,15 +39,6 @@ export default function CompareObligation({
     const [pid, setPid] = useState('')
     const [searchText, setSearchText] = useState<string | undefined>(undefined)
     const [exactMatch, setExactMatch] = useState(false)
-    const session = useSession()
-
-    useEffect(() => {
-        if (session.status === 'unauthenticated') {
-            void signOut()
-        }
-    }, [
-        session,
-    ])
 
     const columns = useMemo<ColumnDef<Project>[]>(
         () => [
@@ -189,14 +179,13 @@ export default function CompareObligation({
     const [showProcessing, setShowProcessing] = useState(false)
 
     useEffect(() => {
-        if (session.status === 'loading' || searchText === undefined) return
+        if (searchText === undefined) return
         const controller = new AbortController()
         const signal = controller.signal
         handleSearch(signal)
         return () => controller.abort()
     }, [
         pageableQueryParam,
-        session,
     ])
 
     const table = useReactTable({
@@ -272,8 +261,6 @@ export default function CompareObligation({
 
     const handleSearch = async (signal?: AbortSignal) => {
         try {
-            if (CommonUtils.isNullOrUndefined(session.data)) return signOut()
-
             const queryUrl = CommonUtils.createUrlWithParams(
                 `projects`,
                 Object.fromEntries(
@@ -292,10 +279,12 @@ export default function CompareObligation({
                     ]),
                 ),
             )
-            const response = await ApiUtils.GET(queryUrl, session.data.user.access_token, signal)
+            const response = await ApiUtils.GET(queryUrl, signal)
             if (response.status !== StatusCodes.OK) {
                 const err = (await response.json()) as ErrorDetails
-                throw new Error(err.message)
+                throw new ApiError(err.message, {
+                    status: response.status,
+                })
             }
 
             const data = (await response.json()) as EmbeddedProjects
@@ -306,11 +295,7 @@ export default function CompareObligation({
                     : data['_embedded']['sw360:projects'],
             )
         } catch (error) {
-            if (error instanceof DOMException && error.name === 'AbortError') {
-                return
-            }
-            const message = error instanceof Error ? error.message : String(error)
-            MessageService.error(message)
+            ApiUtils.reportError(error)
         } finally {
             setShowProcessing(false)
         }
@@ -395,6 +380,10 @@ export default function CompareObligation({
                                     variant='secondary'
                                     onClick={() => {
                                         if (!searchText) setSearchText('')
+                                        setPageableQueryParam((prev) => ({
+                                            ...prev,
+                                            page: 0,
+                                        }))
                                         handleSearch()
                                     }}
                                 >

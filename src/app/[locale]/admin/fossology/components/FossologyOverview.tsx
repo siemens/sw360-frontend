@@ -11,14 +11,14 @@
 
 import { StatusCodes } from 'http-status-codes'
 import { useRouter } from 'next/navigation'
-import { getSession, signOut, useSession } from 'next-auth/react'
+
 import { useTranslations } from 'next-intl'
 import { ReactNode, useCallback, useEffect, useState } from 'react'
 import { Spinner } from 'react-bootstrap'
 import { FossologyConfig } from '@/object-types'
 import MessageService from '@/services/message.service'
-import CommonUtils from '@/utils/common.utils'
-import { ApiUtils } from '@/utils/index'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
+import { dispatchSessionExpiredEvent } from '@/utils/sessionExpiry.utils'
 
 enum FossologyStatus {
     SUCCESS = 'Success',
@@ -38,27 +38,16 @@ export default function FossologyOverview(): ReactNode {
         token_set: false,
     })
     const [fossologyStatus, setFossologyStatus] = useState<FossologyStatus>(FossologyStatus.UNKNOWN)
-    const { status } = useSession()
-
-    useEffect(() => {
-        if (status === 'unauthenticated') {
-            signOut()
-        }
-    }, [
-        status,
-    ])
 
     const fetchData = useCallback(async (url: string, serverConfig: boolean) => {
-        const session = await getSession()
-        if (CommonUtils.isNullOrUndefined(session)) return signOut()
-        const response = await ApiUtils.GET(url, session.user.access_token)
+        const response = await ApiUtils.GET(url)
         if (response.status === StatusCodes.OK) {
             if (serverConfig) {
                 const data = await response.json()
                 return data
             } else return StatusCodes.OK
         } else if (response.status === StatusCodes.UNAUTHORIZED) {
-            return signOut()
+            return dispatchSessionExpiredEvent()
         } else {
             return undefined
         }
@@ -67,7 +56,7 @@ export default function FossologyOverview(): ReactNode {
     useEffect(() => {
         setLoading(true)
         fetchData('fossology/reServerConnection', false)
-            .then((response: number | undefined) => {
+            .then((response) => {
                 if (response === StatusCodes.OK) {
                     setFossologyStatus(FossologyStatus.SUCCESS)
                 } else {
@@ -75,11 +64,7 @@ export default function FossologyOverview(): ReactNode {
                 }
             })
             .catch((error) => {
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                    return
-                }
-                const message = error instanceof Error ? error.message : String(error)
-                MessageService.error(message)
+                ApiUtils.reportError(error)
             })
             .finally(() => {
                 setLoading(false)
@@ -92,17 +77,13 @@ export default function FossologyOverview(): ReactNode {
 
     useEffect(() => {
         fetchData('fossology/configData', true)
-            .then((response: FossologyConfig | undefined) => {
+            .then((response) => {
                 if (response) {
                     setFossologyConfigData(response)
                 }
             })
             .catch((error) => {
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                    return
-                }
-                const message = error instanceof Error ? error.message : String(error)
-                MessageService.error(message)
+                ApiUtils.reportError(error)
             })
     }, [
         fetchData,
@@ -116,9 +97,7 @@ export default function FossologyOverview(): ReactNode {
     }
 
     const updateFossologyConfig = async () => {
-        const session = await getSession()
-        if (CommonUtils.isNullOrUndefined(session)) return signOut()
-        const response = await ApiUtils.POST('fossology/saveConfig', fossologyConfigData, session.user.access_token)
+        const response = await ApiUtils.POST('fossology/saveConfig', fossologyConfigData)
         if (response.status === StatusCodes.OK) {
             MessageService.success(t('Fossology configuration updated successfully'))
         } else if (response.status === StatusCodes.UNAUTHORIZED) {
@@ -185,23 +164,9 @@ export default function FossologyOverview(): ReactNode {
                                         <Spinner className='spinner' />
                                     </div>
                                 ) : fossologyStatus === 'Success' ? (
-                                    <span
-                                        className='badge bg-success capsule-right'
-                                        style={{
-                                            fontSize: '0.8rem',
-                                        }}
-                                    >
-                                        {t(`${fossologyStatus}`)}
-                                    </span>
+                                    <span className='badge bg-success capsule-right'>{t(`${fossologyStatus}`)}</span>
                                 ) : (
-                                    <span
-                                        className='badge bg-danger capsule-right'
-                                        style={{
-                                            fontSize: '0.8rem',
-                                        }}
-                                    >
-                                        {t(`${fossologyStatus}`)}
-                                    </span>
+                                    <span className='badge bg-danger capsule-right'>{t(`${fossologyStatus}`)}</span>
                                 )}
                             </td>
                             <td>{t('checked on saved configuration')}</td>
@@ -225,7 +190,7 @@ export default function FossologyOverview(): ReactNode {
                             id='fossologyConfig.url'
                             name='url'
                             required
-                            value={fossologyConfigData.url}
+                            value={fossologyConfigData?.url ?? ''}
                             onChange={updateInputField}
                         />
                     </div>
@@ -242,7 +207,7 @@ export default function FossologyOverview(): ReactNode {
                             id='fossologyConfig.folderId'
                             name='folderId'
                             required
-                            value={fossologyConfigData.folderId}
+                            value={fossologyConfigData?.folderId ?? ''}
                             onChange={updateInputField}
                         />
                     </div>

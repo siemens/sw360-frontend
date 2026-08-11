@@ -12,14 +12,15 @@
 
 import { ColumnDef, getCoreRowModel, useReactTable } from '@tanstack/react-table'
 import { StatusCodes } from 'http-status-codes'
-import { getSession, signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { SW360Table } from 'next-sw360'
 import React, { ReactNode, useEffect, useMemo, useState } from 'react'
 import { Button, Spinner } from 'react-bootstrap'
 import { AccessToken, Embedded, ErrorDetails } from '@/object-types'
 import MessageService from '@/services/message.service'
-import { ApiUtils, CommonUtils } from '@/utils/index'
+import { ApiError, CommonUtils } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
+import { dispatchSessionExpiredEvent } from '@/utils/sessionExpiry.utils'
 
 type EmbeddedAccessTokens = Embedded<AccessToken, 'sw360:restApiTokens'>
 
@@ -29,33 +30,21 @@ interface Props {
 
 const TokensTable = ({ generatedToken }: Props): ReactNode => {
     const t = useTranslations('default')
-    const session = useSession()
     const [revoked, setRevoked] = useState(false)
-
-    useEffect(() => {
-        if (session.status === 'unauthenticated') {
-            void signOut()
-        }
-    }, [
-        session,
-    ])
 
     const revokeToken = async (tokenName: string) => {
         try {
-            const session = await getSession()
-            if (CommonUtils.isNullOrUndefined(session)) return signOut()
             const response = await ApiUtils.DELETE(
                 CommonUtils.createUrlWithParams('users/tokens', {
                     name: tokenName,
                 }),
-                session.user.access_token,
             )
 
             if (response.status === StatusCodes.NO_CONTENT) {
                 MessageService.success(t('Revoke token sucessfully'))
                 setRevoked(!revoked)
             } else if (response.status === StatusCodes.UNAUTHORIZED) {
-                await signOut()
+                dispatchSessionExpiredEvent()
             } else {
                 MessageService.error(t('Error while processing'))
             }
@@ -136,7 +125,6 @@ const TokensTable = ({ generatedToken }: Props): ReactNode => {
     const [showProcessing, setShowProcessing] = useState(false)
 
     useEffect(() => {
-        if (session.status === 'loading') return
         const controller = new AbortController()
         const signal = controller.signal
 
@@ -147,11 +135,12 @@ const TokensTable = ({ generatedToken }: Props): ReactNode => {
 
         void (async () => {
             try {
-                if (CommonUtils.isNullOrUndefined(session.data)) return signOut()
-                const response = await ApiUtils.GET('users/tokens', session.data.user.access_token, signal)
+                const response = await ApiUtils.GET('users/tokens', signal)
                 if (response.status !== StatusCodes.OK) {
                     const err = (await response.json()) as ErrorDetails
-                    throw new Error(err.message)
+                    throw new ApiError(err.message, {
+                        status: response.status,
+                    })
                 }
 
                 const data = (await response.json()) as EmbeddedAccessTokens
@@ -161,11 +150,7 @@ const TokensTable = ({ generatedToken }: Props): ReactNode => {
                         : data['_embedded']['sw360:restApiTokens'],
                 )
             } catch (error) {
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                    return
-                }
-                const message = error instanceof Error ? error.message : String(error)
-                MessageService.error(message)
+                ApiUtils.reportError(error)
             } finally {
                 clearTimeout(timeout)
                 setShowProcessing(false)
@@ -174,7 +159,6 @@ const TokensTable = ({ generatedToken }: Props): ReactNode => {
 
         return () => controller.abort()
     }, [
-        session,
         revoked,
         generatedToken,
     ])

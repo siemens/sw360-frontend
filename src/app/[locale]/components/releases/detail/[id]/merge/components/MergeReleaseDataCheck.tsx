@@ -10,80 +10,92 @@
 'use client'
 
 import { StatusCodes } from 'http-status-codes'
-import { signOut, useSession } from 'next-auth/react'
 import { Dispatch, ReactNode, SetStateAction, useEffect, useState } from 'react'
-import { Attachment, ErrorDetails, ReleaseDetail } from '@/object-types'
-import MessageService from '@/services/message.service'
+import { useConfigKeyValue } from '@/contexts'
+import { Attachment, ConfigKeys, ErrorDetails, Release, ReleaseDetail } from '@/object-types'
+import { ApiError } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
 import CommonUtils from '@/utils/common.utils'
-import { ApiUtils } from '@/utils/index'
 import AdditionalDataSection from './AdditionalDataSection'
+import Attachments from './Attachments'
+import ClearingDetailsSection from './ClearingDetailsSection'
+import CommercialDetailAdmin from './CommercialDetailAdmin'
+import CotsOssInformation from './CotsOssInformation'
+import ECCInformation from './ECCInformation'
 import ExternalIdsSection from './ExternalIdsSection'
 import GeneralSection from './GeneralSection'
+import LinkedReleasesSection from './LinkedReleasesSection'
+import RequestInformation from './RequestInformation'
+import SupplementalInformation from './SupplementalInformation'
 
 export default function MergeReleaseDataCheck({
     targetRelease,
     sourceRelease,
+    targetAttachments,
+    sourceAttachments,
     finalReleasePayload,
     setFinalReleasePayload,
 }: {
     targetRelease: ReleaseDetail | null
     sourceRelease: ReleaseDetail | null
-    finalReleasePayload: ReleaseDetail | null
-    setFinalReleasePayload: Dispatch<SetStateAction<null | ReleaseDetail>>
+    targetAttachments: Attachment[]
+    sourceAttachments: Attachment[]
+    finalReleasePayload: Release | null
+    setFinalReleasePayload: Dispatch<SetStateAction<null | Release>>
 }): ReactNode {
-    // const t = useTranslations('default')
-    const session = useSession()
     const [sourceReleaseDetail, setSourceReleaseDetail] = useState<ReleaseDetail | null>()
+    const isNestedReleaseEnabled = useConfigKeyValue(ConfigKeys.IS_NESTED_RELEASE_ENABLED)
+    const showLinkedReleases = isNestedReleaseEnabled !== 'false'
 
     useEffect(() => {
-        if (session.status === 'unauthenticated') {
-            signOut()
-        }
-    }, [
-        session,
-    ])
-
-    useEffect(() => {
-        if (session.status === 'loading') return
         const controller = new AbortController()
         const signal = controller.signal
 
         void (async () => {
             try {
-                if (CommonUtils.isNullOrUndefined(session.data)) return signOut()
                 const queryUrl = CommonUtils.createUrlWithParams(`releases/${sourceRelease?.id}`, {
                     allDetails: 'true',
                 })
-                const response = await ApiUtils.GET(queryUrl, session.data.user.access_token, signal)
+                const response = await ApiUtils.GET(queryUrl, signal)
                 if (response.status !== StatusCodes.OK) {
                     const err = (await response.json()) as ErrorDetails
-                    throw new Error(err.message)
+                    throw new ApiError(err.message, {
+                        status: response.status,
+                    })
                 }
 
                 const data = (await response.json()) as ReleaseDetail
 
                 setSourceReleaseDetail(CommonUtils.isNullOrUndefined(data) ? null : data)
             } catch (error) {
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                    return
-                }
-                const message = error instanceof Error ? error.message : String(error)
-                MessageService.error(message)
+                ApiUtils.reportError(error)
             }
         })()
 
         return () => controller.abort()
     }, [
-        session,
         sourceRelease?.id,
     ])
 
     useEffect(() => {
+        if (CommonUtils.isNullOrUndefined(targetRelease)) return
+        const { _embedded, _links, ...filtertedTargetRelease } = targetRelease
         setFinalReleasePayload({
-            ...targetRelease,
+            ...filtertedTargetRelease,
             createdBy: targetRelease?._embedded?.['sw360:createdBy']?.email ?? '',
-            attachments: targetRelease?._embedded?.['sw360:attachments'] ?? ([] as Attachment[]),
-        } as ReleaseDetail)
+            attachments:
+                targetRelease?._embedded?.['sw360:attachments']?.map(
+                    ({ _links, ...attachmentData }) => attachmentData,
+                ) ?? ([] as Attachment[]),
+            moderators:
+                targetRelease?._embedded?.['sw360:moderators']?.map((moderator) => moderator.email) ?? ([] as string[]),
+            contributors:
+                targetRelease?._embedded?.['sw360:contributors']?.map((contributor) => contributor.email) ??
+                ([] as string[]),
+            subscribers:
+                targetRelease?._embedded?.['sw360:subscribers']?.map((subscriber) => subscriber.email) ??
+                ([] as string[]),
+        } as Release)
     }, [
         targetRelease,
         sourceRelease,
@@ -110,6 +122,58 @@ export default function MergeReleaseDataCheck({
                         sourceReleaseDetail={sourceReleaseDetail}
                         finalReleasePayload={finalReleasePayload}
                         setFinalReleasePayload={setFinalReleasePayload}
+                    />
+                    {showLinkedReleases && (
+                        <LinkedReleasesSection
+                            targetRelease={targetRelease}
+                            sourceReleaseDetail={sourceReleaseDetail}
+                            finalReleasePayload={finalReleasePayload}
+                            setFinalReleasePayload={setFinalReleasePayload}
+                        />
+                    )}
+                    <ClearingDetailsSection
+                        targetRelease={targetRelease}
+                        sourceReleaseDetail={sourceReleaseDetail}
+                        finalReleasePayload={finalReleasePayload}
+                        setFinalReleasePayload={setFinalReleasePayload}
+                    />
+                    <RequestInformation
+                        targetRelease={targetRelease}
+                        sourceReleaseDetail={sourceReleaseDetail}
+                        finalReleasePayload={finalReleasePayload}
+                        setFinalReleasePayload={setFinalReleasePayload}
+                    />
+                    <SupplementalInformation
+                        targetRelease={targetRelease}
+                        sourceReleaseDetail={sourceReleaseDetail}
+                        finalReleasePayload={finalReleasePayload}
+                        setFinalReleasePayload={setFinalReleasePayload}
+                    />
+                    <ECCInformation
+                        targetRelease={targetRelease}
+                        sourceReleaseDetail={sourceReleaseDetail}
+                        finalReleasePayload={finalReleasePayload}
+                        setFinalReleasePayload={setFinalReleasePayload}
+                    />
+                    <CommercialDetailAdmin
+                        targetRelease={targetRelease}
+                        sourceReleaseDetail={sourceReleaseDetail}
+                        finalReleasePayload={finalReleasePayload}
+                        setFinalReleasePayload={setFinalReleasePayload}
+                    />
+                    <CotsOssInformation
+                        targetRelease={targetRelease}
+                        sourceReleaseDetail={sourceReleaseDetail}
+                        finalReleasePayload={finalReleasePayload}
+                        setFinalReleasePayload={setFinalReleasePayload}
+                    />
+                    <Attachments
+                        targetRelease={targetRelease}
+                        sourceReleaseDetail={sourceReleaseDetail}
+                        finalReleasePayload={finalReleasePayload}
+                        setFinalReleasePayload={setFinalReleasePayload}
+                        targetAttachments={targetAttachments}
+                        sourceAttachments={sourceAttachments}
                     />
                 </>
             )}

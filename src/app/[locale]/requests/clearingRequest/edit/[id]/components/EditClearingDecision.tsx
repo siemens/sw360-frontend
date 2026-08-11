@@ -9,13 +9,12 @@
 
 'use client'
 
-import { signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { SelectUsersDialog, ShowInfoOnHover } from 'next-sw360'
 import { ReactNode, useEffect, useState } from 'react'
-
+import DateField from '@/components/DateField'
 import { ClearingRequestDetails, UpdateClearingRequestPayload, UserGroupType } from '@/object-types'
-import { CommonUtils } from '@/utils'
+import { getAuthenticatedUserIdentity } from '@/utils/api/authenticatedUser.util'
 
 interface Props {
     clearingRequestData: ClearingRequestDetails | undefined
@@ -33,22 +32,20 @@ export default function EditClearingDecision({
     setUpdateClearingRequestPayload,
 }: Props): ReactNode {
     const t = useTranslations('default')
-    const { data: session, status } = useSession()
-    const [minDate, setMinDate] = useState('')
     const [clearingTeamData, setClearingTeamData] = useState<ClearingRequestDataMap>({})
     const [dialogOpenClearingTeam, setDialogOpenClearingTeam] = useState(false)
+    const [userIdentity, setUserIdentity] = useState<Awaited<ReturnType<typeof getAuthenticatedUserIdentity>> | null>(
+        null,
+    )
 
     useEffect(() => {
-        if (status === 'unauthenticated') {
-            signOut()
-        }
-    }, [
-        status,
-    ])
-
-    useEffect(() => {
-        const currentDate = new Date()
-        setMinDate(currentDate.toISOString().split('T')[0])
+        void (async () => {
+            try {
+                setUserIdentity(await getAuthenticatedUserIdentity())
+            } catch {
+                setUserIdentity(null)
+            }
+        })()
     }, [])
 
     const updateClearingTeamData = (user: ClearingRequestDataMap) => {
@@ -68,7 +65,7 @@ export default function EditClearingDecision({
     }
 
     return (
-        <table className='table label-value-table request-summary-table'>
+        <table className='table summary-table'>
             <thead>
                 <tr>
                     <th colSpan={2}>{t('Clearing Decision')}</th>
@@ -115,9 +112,7 @@ export default function EditClearingDecision({
                             name='priority'
                             value={updateClearingRequestPayload.priority}
                             onChange={updateInputField}
-                            disabled={
-                                CommonUtils.isNullOrUndefined(session) || session.user.userGroup === UserGroupType.USER
-                            }
+                            disabled={userIdentity?.userGroup === UserGroupType.USER}
                             required
                         >
                             <option value='LOW'>{t('Low')}</option>
@@ -158,19 +153,19 @@ export default function EditClearingDecision({
                 <tr>
                     <td>{t('Agreed Clearing Date')}:</td>
                     <td>
-                        <input
-                            type='date'
-                            className='form-control'
-                            aria-label='Agreed Clearing Date YYYY-MM-DD'
+                        <DateField
                             id='agreedClearingDate'
-                            aria-describedby='agreedClearingDate'
                             name='agreedClearingDate'
-                            value={updateClearingRequestPayload.agreedClearingDate}
-                            disabled={
-                                CommonUtils.isNullOrUndefined(session) || session.user.userGroup === UserGroupType.USER
-                            }
-                            onChange={updateInputField}
-                            min={minDate}
+                            ariaLabel='Agreed Clearing Date YYYY-MM-DD'
+                            placeholder='YYYY-MM-DD'
+                            value={updateClearingRequestPayload.agreedClearingDate ?? ''}
+                            onChange={(normalized) => {
+                                setUpdateClearingRequestPayload({
+                                    ...updateClearingRequestPayload,
+                                    agreedClearingDate: normalized,
+                                })
+                            }}
+                            minDate={new Date()}
                         />
                     </td>
                 </tr>

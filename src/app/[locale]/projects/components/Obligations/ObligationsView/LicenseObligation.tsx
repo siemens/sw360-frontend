@@ -12,11 +12,10 @@
 import { ColumnDef, getCoreRowModel, getExpandedRowModel, useReactTable } from '@tanstack/react-table'
 import { StatusCodes } from 'http-status-codes'
 import Link from 'next/link'
-import { signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { Dispatch, type JSX, SetStateAction, useEffect, useMemo, useState } from 'react'
 import { Spinner } from 'react-bootstrap'
-import { PaddedCell, PageSizeSelector, SW360Table, TableFooter } from '@/components/sw360'
+import { PaddedCell, PageSizeSelector, SW360Table, TableFooter, UpdateCommentModal } from '@/components/sw360'
 import {
     ActionType,
     ErrorDetails,
@@ -24,24 +23,19 @@ import {
     ObligationData,
     ObligationEntry,
     ObligationResponse,
+    ObligationType,
     PageableQueryParam,
     PaginationMeta,
+    UpdateCommentModalMetadata,
 } from '@/object-types'
-import MessageService from '@/services/message.service'
-import { ApiUtils, CommonUtils } from '@/utils'
-import { ObligationLevels } from '../../../../../../object-types/Obligation'
+import { ApiError, CommonUtils } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
 import CompareObligation from '../CompareObligation'
 import { ExpandableList } from './ExpandableComponents'
 import LicenseDbObligationsModal from './LicenseDbObligationsModal'
-import UpdateCommentModal from './UpdateCommentModal'
 
 const Capitalize = (text: string) =>
     text.split('_').reduce((s, c) => s + ' ' + (c.charAt(0) + c.substring(1).toLocaleLowerCase()), '')
-
-interface UpdateCommentModalMetadata {
-    obligation: string
-    comment?: string
-}
 
 interface Props {
     projectId: string
@@ -56,15 +50,6 @@ export default function LicenseObligation({ projectId, actionType, payload, setP
     const [showLicenseDbObligationsModal, setShowLicenseDbObligationsModal] = useState(false)
     const [showCompareObligationsModal, setShowCompareObligationsModal] = useState(false)
     const [refresh, setRefresh] = useState(false)
-    const session = useSession()
-
-    useEffect(() => {
-        if (session.status === 'unauthenticated') {
-            void signOut()
-        }
-    }, [
-        session,
-    ])
 
     const detailColumns = useMemo<
         ColumnDef<
@@ -120,7 +105,7 @@ export default function LicenseObligation({ projectId, actionType, payload, setP
                                                 }}
                                             >
                                                 <Link
-                                                    href={`/licenses/${licenseId}`}
+                                                    href={`/licenses/detail?id=${licenseId}`}
                                                     className='text-link'
                                                 >
                                                     {licenseId}
@@ -283,7 +268,7 @@ export default function LicenseObligation({ projectId, actionType, payload, setP
                                                 }}
                                             >
                                                 <Link
-                                                    href={`/licenses/${licenseId}`}
+                                                    href={`/licenses/detail?id=${licenseId}`}
                                                     className='text-link'
                                                 >
                                                     {licenseId}
@@ -339,9 +324,8 @@ export default function LicenseObligation({ projectId, actionType, payload, setP
                                 let obligationValue = payload?.[row.original.node[0]] ?? {}
                                 obligationValue = {
                                     ...obligationValue,
-                                    id: row.original.node[1].id,
                                     status: e.target.value,
-                                    obligationType: ObligationLevels.LICENSE_OBLIGATION,
+                                    obligationType: ObligationType.LICENSE_OBLIGATION,
                                 }
                                 setPayload((payload: ObligationEntry) => ({
                                     ...payload,
@@ -392,8 +376,9 @@ export default function LicenseObligation({ projectId, actionType, payload, setP
                         value={payload?.[row.original.node[0]]?.comment ?? row.original.node[1].comment ?? ''}
                         onClick={() => {
                             setUpdateCommentModalData({
-                                comment: payload?.[row.original.node[0]]?.comment ?? row.original.node[1].comment ?? '',
-                                obligation: row.original.node[0],
+                                initialCommentValue:
+                                    payload?.[row.original.node[0]]?.comment ?? row.original.node[1].comment ?? '',
+                                id: row.original.node[0],
                             })
                         }}
                         className='form-control'
@@ -441,7 +426,6 @@ export default function LicenseObligation({ projectId, actionType, payload, setP
     const [showProcessing, setShowProcessing] = useState(false)
 
     useEffect(() => {
-        if (session.status === 'loading') return
         const controller = new AbortController()
         const signal = controller.signal
 
@@ -452,7 +436,6 @@ export default function LicenseObligation({ projectId, actionType, payload, setP
 
         void (async () => {
             try {
-                if (CommonUtils.isNullOrUndefined(session.data)) return signOut()
                 const queryUrl = CommonUtils.createUrlWithParams(
                     `projects/${projectId}/licenseObligations`,
                     Object.fromEntries(
@@ -464,10 +447,12 @@ export default function LicenseObligation({ projectId, actionType, payload, setP
                         ]),
                     ),
                 )
-                const response = await ApiUtils.GET(queryUrl, session.data.user.access_token, signal)
+                const response = await ApiUtils.GET(queryUrl, signal)
                 if (response.status !== StatusCodes.OK) {
                     const err = (await response.json()) as ErrorDetails
-                    throw new Error(err.message)
+                    throw new ApiError(err.message, {
+                        status: response.status,
+                    })
                 }
 
                 const data = (await response.json()) as ObligationResponse
@@ -491,11 +476,7 @@ export default function LicenseObligation({ projectId, actionType, payload, setP
                     ),
                 )
             } catch (error) {
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                    return
-                }
-                const message = error instanceof Error ? error.message : String(error)
-                MessageService.error(message)
+                ApiUtils.reportError(error)
             } finally {
                 clearTimeout(timeout)
                 setShowProcessing(false)
@@ -505,36 +486,29 @@ export default function LicenseObligation({ projectId, actionType, payload, setP
         return () => controller.abort()
     }, [
         pageableQueryParam,
-        session,
+        refresh,
     ])
 
     useEffect(() => {
-        if (session.status === 'loading' || !selectedProjectId) return
+        if (CommonUtils.isNullOrUndefined(selectedProjectId)) return
         const controller = new AbortController()
         const signal = controller.signal
 
         void (async () => {
             try {
-                if (CommonUtils.isNullOrUndefined(session.data)) return signOut()
                 setShowProcessing(true)
-                const response = await ApiUtils.GET(
-                    `projects/${selectedProjectId}/licenseObligations`,
-                    session.data.user.access_token,
-                    signal,
-                )
+                const response = await ApiUtils.GET(`projects/${selectedProjectId}/licenseObligations`, signal)
                 if (response.status !== StatusCodes.OK) {
                     const err = (await response.json()) as ErrorDetails
-                    throw new Error(err.message)
+                    throw new ApiError(err.message, {
+                        status: response.status,
+                    })
                 }
 
                 const data = (await response.json()) as ObligationResponse
                 setSelectedProjectObligationData(data)
             } catch (error) {
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                    return
-                }
-                const message = error instanceof Error ? error.message : String(error)
-                MessageService.error(message)
+                ApiUtils.reportError(error)
             } finally {
                 setShowProcessing(false)
             }
@@ -542,7 +516,6 @@ export default function LicenseObligation({ projectId, actionType, payload, setP
 
         return () => controller.abort()
     }, [
-        session,
         selectedProjectId,
     ])
 
@@ -588,10 +561,6 @@ export default function LicenseObligation({ projectId, actionType, payload, setP
                 }
             }
             return row.depth === 0
-        },
-
-        meta: {
-            rowHeightConstant: true,
         },
     })
 
@@ -646,10 +615,6 @@ export default function LicenseObligation({ projectId, actionType, payload, setP
             }
             return row.depth === 0
         },
-
-        meta: {
-            rowHeightConstant: true,
-        },
     })
 
     editTable.getRowModel().rows.forEach((row) => {
@@ -665,9 +630,20 @@ export default function LicenseObligation({ projectId, actionType, payload, setP
             <UpdateCommentModal
                 modalMetaData={updateCommentModalData}
                 setModalMetaData={setUpdateCommentModalData}
-                payload={payload}
-                setPayload={setPayload}
-                obligationTypeName={ObligationLevels.LICENSE_OBLIGATION}
+                setCommentInPayload={(comment: string) => {
+                    if (payload && updateCommentModalData?.id && setPayload) {
+                        let obligationValue = payload[updateCommentModalData.id]
+                        obligationValue = {
+                            ...obligationValue,
+                            comment: comment,
+                            obligationType: ObligationType.LICENSE_OBLIGATION,
+                        }
+                        setPayload((payload: ObligationEntry) => ({
+                            ...payload,
+                            [updateCommentModalData.id]: obligationValue,
+                        }))
+                    }
+                }}
             />
             <LicenseDbObligationsModal
                 show={showLicenseDbObligationsModal}

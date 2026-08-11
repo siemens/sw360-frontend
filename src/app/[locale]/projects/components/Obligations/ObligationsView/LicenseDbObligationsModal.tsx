@@ -12,7 +12,6 @@
 import { ColumnDef, getCoreRowModel, getExpandedRowModel, useReactTable } from '@tanstack/react-table'
 import { StatusCodes } from 'http-status-codes'
 import Link from 'next/link'
-import { getSession, signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { Dispatch, ReactNode, SetStateAction, useEffect, useMemo, useState } from 'react'
 import { Modal, Spinner } from 'react-bootstrap'
@@ -27,7 +26,9 @@ import {
     PaginationMeta,
 } from '@/object-types'
 import MessageService from '@/services/message.service'
-import { ApiUtils, CommonUtils } from '@/utils'
+import { ApiError, CommonUtils } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
+import { dispatchSessionExpiredEvent } from '@/utils/sessionExpiry.utils'
 import { ExpandableList } from './ExpandableComponents'
 
 const Capitalize = (text: string) =>
@@ -48,42 +49,26 @@ export default function LicenseDbObligationsModal({
 }): ReactNode {
     const t = useTranslations('default')
     const [obligationIds, setObligationIds] = useState<string[]>([])
-    const session = useSession()
     const [loading, setLoading] = useState(false)
-
-    useEffect(() => {
-        if (session.status === 'unauthenticated') {
-            void signOut()
-        }
-    }, [
-        session,
-    ])
 
     const addObligationsToLicense = async () => {
         try {
             setLoading(true)
-            const session = await getSession()
-            if (CommonUtils.isNullOrUndefined(session)) return signOut()
-            const response = await ApiUtils.POST(
-                `projects/${projectId}/licenseObligation`,
-                obligationIds,
-                session.user.access_token,
-            )
+            const response = await ApiUtils.POST(`projects/${projectId}/licenseObligation`, obligationIds)
             if (response.status === StatusCodes.UNAUTHORIZED) {
-                await signOut()
+                dispatchSessionExpiredEvent()
             } else if (response.status === StatusCodes.CREATED) {
                 MessageService.success(t('Added obligations successfully'))
+                setRefresh((prev) => !prev)
             } else {
                 const err = (await response.json()) as ErrorDetails
-                throw new Error(err.message)
+                throw new ApiError(err.message, {
+                    status: response.status,
+                })
             }
             setLoading(false)
         } catch (error: unknown) {
-            if (error instanceof DOMException && error.name === 'AbortError') {
-                return
-            }
-            const message = error instanceof Error ? error.message : String(error)
-            MessageService.error(message)
+            ApiUtils.reportError(error)
         }
     }
 
@@ -134,9 +119,9 @@ export default function LicenseDbObligationsModal({
                         <input
                             className='form-check-input'
                             type='checkbox'
-                            value={row.original.node[0] ?? ''}
-                            checked={obligationIds.indexOf(row.original.node[0] ?? '') !== -1}
-                            onChange={() => handleCheckboxes(row.original.node[0] ?? '')}
+                            value={row.original.node[1].id ?? ''}
+                            checked={obligationIds.indexOf(row.original.node[1].id ?? '') !== -1}
+                            onChange={() => handleCheckboxes(row.original.node[1].id ?? '')}
                         />
                     </div>
                 ),
@@ -275,7 +260,6 @@ export default function LicenseDbObligationsModal({
     const [showProcessing, setShowProcessing] = useState(false)
 
     useEffect(() => {
-        if (session.status === 'loading') return
         const controller = new AbortController()
         const signal = controller.signal
 
@@ -286,7 +270,6 @@ export default function LicenseDbObligationsModal({
 
         void (async () => {
             try {
-                if (CommonUtils.isNullOrUndefined(session.data)) return signOut()
                 const queryUrl = CommonUtils.createUrlWithParams(
                     `projects/${projectId}/licenseDbObligations`,
                     Object.fromEntries(
@@ -298,10 +281,12 @@ export default function LicenseDbObligationsModal({
                         ]),
                     ),
                 )
-                const response = await ApiUtils.GET(queryUrl, session.data.user.access_token, signal)
+                const response = await ApiUtils.GET(queryUrl, signal)
                 if (response.status !== StatusCodes.OK && response.status !== StatusCodes.NO_CONTENT) {
                     const err = (await response.json()) as ErrorDetails
-                    throw new Error(err.message)
+                    throw new ApiError(err.message, {
+                        status: response.status,
+                    })
                 }
                 if (response.status === StatusCodes.NO_CONTENT) {
                     return
@@ -327,11 +312,7 @@ export default function LicenseDbObligationsModal({
                     ),
                 )
             } catch (error) {
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                    return
-                }
-                const message = error instanceof Error ? error.message : String(error)
-                MessageService.error(message)
+                ApiUtils.reportError(error)
             } finally {
                 clearTimeout(timeout)
                 setShowProcessing(false)
@@ -341,7 +322,6 @@ export default function LicenseDbObligationsModal({
         return () => controller.abort()
     }, [
         pageableQueryParam,
-        session,
     ])
 
     const table = useReactTable({
@@ -474,7 +454,7 @@ export default function LicenseDbObligationsModal({
                         await addObligationsToLicense()
                         handleCloseDialog()
                     }}
-                    disabled={loading}
+                    disabled={loading || obligationIds.length === 0}
                 >
                     {t('Add')}{' '}
                     {loading === true && (

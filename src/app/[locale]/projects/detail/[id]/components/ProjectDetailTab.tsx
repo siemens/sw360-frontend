@@ -11,25 +11,34 @@
 
 import { StatusCodes } from 'http-status-codes'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { Breadcrumb, ShowInfoOnHover } from 'next-sw360'
-import { type JSX, useEffect, useState } from 'react'
+import { Dispatch, type JSX, SetStateAction, useEffect, useState } from 'react'
 import { Button, Col, Dropdown, ListGroup, Row, Spinner, Tab } from 'react-bootstrap'
 import Attachments from '@/components/Attachments/Attachments'
+import LinkProjectsModal from '@/components/sw360/LinkedProjectsModal/LinkProjectsModal'
+import SidebarCountBadge from '@/components/sw360/SidebarCountBadge'
+import { useConfigKeyValue } from '@/contexts'
 import {
     ActionType,
     AdministrationDataType,
     ClearingDetailsCount,
+    ConfigKeys,
     ErrorDetails,
+    LinkedProjectData,
+    Project,
+    ProjectDetailTabCounts,
+    ProjectPayload,
     SummaryDataType,
+    UserGroupPriority,
     UserGroupType,
 } from '@/object-types'
 import MessageService from '@/services/message.service'
-import { ApiUtils, CommonUtils } from '@/utils'
+import { ApiError, CommonUtils } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
+import { getAuthenticatedUserIdentity } from '@/utils/api/authenticatedUser.util'
 import ImportSBOMMetadata from '../../../../../../object-types/cyclonedx/ImportSBOMMetadata'
 import ImportSBOMModal from '../../../components/ImportSBOMModal'
-import LinkProjects from '../../../components/LinkProjects'
 import Obligations from '../../../components/Obligations/Obligations'
 import Administration from './Administration'
 import AttachmentUsages from './AttachmentUsages'
@@ -44,35 +53,74 @@ import VulnerabilityTrackingStatusComponent from './VulnerabilityTrackingStatus'
 
 export default function ViewProjects({ projectId }: { projectId: string }): JSX.Element {
     const t = useTranslations('default')
-    const session = useSession()
+    const isPackageFeatureEnabled = useConfigKeyValue(ConfigKeys.IS_PACKAGE_PORTLET_ENABLED) === 'true'
     const [summaryData, setSummaryData] = useState<SummaryDataType | undefined>(undefined)
     const [clearingDetailCount, setClearingDetailCount] = useState<ClearingDetailsCount | undefined>()
     const [obligationsTotal, setObligationsTotal] = useState<number>(0)
     const [obligationsNonOpenCount, setObligationsNonOpenCount] = useState<number>(0)
     const [obligationsLoading, setObligationsLoading] = useState<boolean>(false)
+    const [eccClassifiedCount, setEccClassifiedCount] = useState<number>(0)
+    const [eccOpenCount, setEccOpenCount] = useState<number>(0)
+    const [eccLoading, setEccLoading] = useState<boolean>(false)
+    const [vulnerabilitiesTotal, setVulnerabilitiesTotal] = useState<number>(0)
+    const [vulnerabilitiesRatedCount, setVulnerabilitiesRatedCount] = useState<number>(0)
+    const [vulnerabilitiesLoading, setVulnerabilitiesLoading] = useState<boolean>(false)
     const [administrationData, setAdministrationData] = useState<AdministrationDataType | undefined>(undefined)
     const [show, setShow] = useState(false)
     const router = useRouter()
     const searchParams = useSearchParams()
     const DEFAULT_ACTIVE_TAB = 'summary'
+    const TABS = [
+        'summary',
+        'administration',
+        'licenseClearing',
+        'obligations',
+        'ecc',
+        'vulnerabilityTrackingStatus',
+        'eventKey',
+        'attachmentUsages',
+        'vulnerabilities',
+        'attachments',
+        'changeLog',
+        ...(isPackageFeatureEnabled
+            ? [
+                  'linkedPackages',
+              ]
+            : []),
+    ]
+
     const [activeKey, setActiveKey] = useState(DEFAULT_ACTIVE_TAB)
     const [showExportProjectSbomModal, setShowExportProjectSbomModal] = useState<boolean>(false)
     const [importSBOMMetadata, setImportSBOMMetadata] = useState<ImportSBOMMetadata>({
         show: false,
         importType: 'CycloneDx',
     })
+    const sbomImportExportAccessUserRole = useConfigKeyValue(ConfigKeys.SBOM_IMPORT_EXPORT_ACCESS_USER_ROLE)
+    const normalizedSbomImportExportAccessUserRole: UserGroupType =
+        sbomImportExportAccessUserRole && sbomImportExportAccessUserRole in UserGroupType
+            ? (sbomImportExportAccessUserRole as UserGroupType)
+            : UserGroupType.VIEWER
+    const [userIdentity, setUserIdentity] = useState<Awaited<ReturnType<typeof getAuthenticatedUserIdentity>> | null>(
+        null,
+    )
+    const [projectPayload, setProjectPayload] = useState<ProjectPayload>()
 
     useEffect(() => {
-        if (session.status === 'unauthenticated') {
-            signOut()
+        void (async () => {
+            try {
+                setUserIdentity(await getAuthenticatedUserIdentity())
+            } catch {
+                setUserIdentity(null)
+            }
+        })()
+    }, [])
+
+    useEffect(() => {
+        let tab = searchParams.get('tab')
+        if (tab === null || TABS.indexOf(tab) === -1) {
+            tab = DEFAULT_ACTIVE_TAB
         }
-    }, [
-        session,
-    ])
-
-    useEffect(() => {
-        const fragment = searchParams.get('tab') ?? DEFAULT_ACTIVE_TAB
-        setActiveKey(fragment)
+        setActiveKey(tab)
     }, [
         searchParams,
     ])
@@ -83,143 +131,158 @@ export default function ViewProjects({ projectId }: { projectId: string }): JSX.
     }
 
     useEffect(() => {
-        if (session.status === 'loading') return
         const controller = new AbortController()
         const signal = controller.signal
 
         void (async () => {
             try {
-                if (CommonUtils.isNullOrUndefined(session.data)) return signOut()
-                const response = await ApiUtils.GET(
-                    `projects/${projectId}/summaryAdministration`,
-                    session.data.user.access_token,
-                    signal,
-                )
+                const response = await ApiUtils.GET(`projects/${projectId}/summaryAdministration`, signal)
                 if (response.status !== StatusCodes.OK) {
                     const err = (await response.json()) as ErrorDetails
-                    throw new Error(err.message)
+                    throw new ApiError(err.message, {
+                        status: response.status,
+                    })
                 }
 
                 const data = (await response.json()) as SummaryDataType | AdministrationDataType
 
                 setSummaryData(data as SummaryDataType)
                 setAdministrationData(data as AdministrationDataType)
-            } catch (error) {
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                    return
+
+                const project = (await (await ApiUtils.GET(`projects/${projectId}`, signal)).json()) as Project
+                if (response.status !== StatusCodes.OK) {
+                    const err = (await response.json()) as ErrorDetails
+                    throw new ApiError(err.message, {
+                        status: response.status,
+                    })
                 }
-                const message = error instanceof Error ? error.message : String(error)
-                MessageService.error(message)
+                const ob = {} as {
+                    [k: string]: LinkedProjectData
+                }
+                project._embedded?.['sw360:projects']?.map((p) => {
+                    ob[p?.id ?? ''] = {
+                        enableSvm: p.enableSvm ?? false,
+                        name: p.name ?? '',
+                        projectRelationship:
+                            project.linkedProjects?.filter((pr) => pr.project.split('/').at(-1) === p.id)?.[0]
+                                ?.relation ?? 'CONTAINED',
+                        version: p.version ?? '',
+                    }
+                })
+                setProjectPayload({
+                    id: projectId,
+                    linkedProjects: ob,
+                })
+            } catch (error) {
+                ApiUtils.reportError(error)
             }
         })()
 
         return () => controller.abort()
     }, [
         projectId,
-        session,
-        session,
     ])
 
     useEffect(() => {
-        if (session.status === 'loading') return
         const controller = new AbortController()
         const signal = controller.signal
         void (async () => {
             try {
-                if (CommonUtils.isNullOrUndefined(session.data)) return signOut()
-                const response = await ApiUtils.GET(
-                    `projects/${projectId}/clearingDetailsCount`,
-                    session.data.user.access_token,
-                    signal,
-                )
+                const response = await ApiUtils.GET(`projects/${projectId}/clearingDetailsCount`, signal)
                 if (response.status !== StatusCodes.OK) {
                     const err = (await response.json()) as ErrorDetails
-                    throw new Error(err.message)
+                    throw new ApiError(err.message, {
+                        status: response.status,
+                    })
                 }
                 const data = (await response.json()) as ClearingDetailsCount
                 setClearingDetailCount(data)
             } catch (error: unknown) {
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                    return
-                }
-                const message = error instanceof Error ? error.message : String(error)
-                MessageService.error(message)
+                ApiUtils.reportError(error)
             }
         })()
         return () => controller.abort()
     }, [
         projectId,
-        session,
     ])
 
-    const handleEditProject = (projectId: string) => {
-        if (CommonUtils.isNullOrUndefined(session.data)) return signOut()
-        if (session?.data.user.email === summaryData?.['_embedded']?.['createdBy']?.['email']) {
-            MessageService.success(t('You are editing the original document'))
-            router.push(`/projects/edit/${projectId}?tab=${activeKey}`)
-        } else {
-            MessageService.success(t('You will create a moderation request if you update'))
-            router.push(`/projects/edit/${projectId}?tab=${activeKey}`)
+    const checkUpdateEligibility = async (projectId: string) => {
+        const url = CommonUtils.createUrlWithParams(`moderationrequest/validate`, {
+            entityType: 'PROJECT',
+            entityId: projectId,
+        })
+        const response = await ApiUtils.POST(url, {})
+        switch (response.status) {
+            case StatusCodes.UNAUTHORIZED:
+                MessageService.warn(t('Unauthorized request'))
+                return 'DENIED'
+            case StatusCodes.FORBIDDEN:
+                MessageService.warn(t('Access Denied'))
+                return 'DENIED'
+            case StatusCodes.BAD_REQUEST:
+                MessageService.warn(t('Invalid input or missing required parameters'))
+                return 'DENIED'
+            case StatusCodes.INTERNAL_SERVER_ERROR:
+                MessageService.error(t('Internal server error'))
+                return 'DENIED'
+            case StatusCodes.OK:
+                MessageService.info(t('You can write to the entity'))
+                return 'OK'
+            case StatusCodes.ACCEPTED:
+                MessageService.info(t('You are allowed to perform write with MR'))
+                return 'ACCEPTED'
+            default:
+                MessageService.error(t('Error while processing'))
+                return 'DENIED'
         }
     }
 
-    useEffect(() => {
-        if (session.status === 'loading') return
+    const preRequisite = async () => {
+        try {
+            const isEligible = await checkUpdateEligibility(projectId)
+            if (isEligible === 'OK' || isEligible === 'ACCEPTED') {
+                handleEditProject(projectId)
+            }
+        } catch (error) {
+            ApiUtils.reportError(error)
+        }
+    }
 
+    const handleEditProject = (projectId: string) => {
+        router.push(`/projects/edit/${projectId}?tab=${activeKey}`)
+    }
+
+    useEffect(() => {
         const controller = new AbortController()
         const signal = controller.signal
 
-        const isOpen = (s?: string | null) => (s ?? '').trim().toUpperCase() === 'OPEN'
-
         const fetchCounts = async () => {
             setObligationsLoading(true)
+            setEccLoading(true)
+            setVulnerabilitiesLoading(true)
             try {
-                if (CommonUtils.isNullOrUndefined(session.data)) {
-                    void signOut()
-                    return
+                const response = await ApiUtils.GET(`projects/${projectId}/tabCounts`, signal)
+                const body = (await response.json().catch(() => ({}))) as ProjectDetailTabCounts | ErrorDetails
+
+                if (response.status !== StatusCodes.OK) {
+                    throw new ApiError(('message' in body ? body.message : undefined) ?? `Status ${response.status}`, {
+                        status: response.status,
+                    })
                 }
 
-                const url = CommonUtils.createUrlWithParams(`projects/${projectId}/licenseObligations`, {
-                    page: '0',
-                    page_entries: '9999',
-                })
-
-                const resp = await ApiUtils.GET(url, session.data.user.access_token, signal)
-                const body = (await resp.json().catch(() => ({}))) as {
-                    obligations?: Record<
-                        string,
-                        {
-                            status?: string
-                        }
-                    >
-                    page?: {
-                        totalElements?: number
-                    }
-                    message?: string
-                    error?: string
-                }
-
-                if (resp.status !== StatusCodes.OK) {
-                    throw new Error(body?.message ?? body?.error ?? `Status ${resp.status}`)
-                }
-
-                const obligations = body?.obligations ?? {}
-                const entries = Object.values(obligations) as Array<{
-                    status?: string
-                }>
-
-                const serverTotal = body?.page?.totalElements
-                const total = typeof serverTotal === 'number' ? serverTotal : entries.length
-
-                const nonOpen = entries.filter((e) => !isOpen(e?.status)).length
-
-                setObligationsTotal(total)
-                setObligationsNonOpenCount(nonOpen)
+                const data = body as ProjectDetailTabCounts
+                setObligationsTotal(data.obligationCount)
+                setObligationsNonOpenCount(data.obligationNonOpenCount)
+                setEccClassifiedCount(Math.max(0, data.eccClassifiedCount))
+                setEccOpenCount(Math.max(0, data.eccOpenCount))
+                setVulnerabilitiesTotal(Math.max(0, data.vulnerabilityCount))
+                setVulnerabilitiesRatedCount(Math.max(0, data.vulnerabilityRatedCount))
             } catch (error) {
-                if (error instanceof DOMException && error.name === 'AbortError') return
-                MessageService.error(error instanceof Error ? error.message : String(error))
+                ApiUtils.reportError(error)
             } finally {
                 setObligationsLoading(false)
+                setEccLoading(false)
+                setVulnerabilitiesLoading(false)
             }
         }
 
@@ -227,9 +290,30 @@ export default function ViewProjects({ projectId }: { projectId: string }): JSX.
         return () => controller.abort()
     }, [
         projectId,
-        session.status,
-        session.data?.user?.access_token,
     ])
+
+    const isVulnerabilitiesDisplayEnabled = summaryData?.enableVulnerabilitiesDisplay ?? false
+
+    const vulnerabilitiesBadgeClassName = !isVulnerabilitiesDisplayEnabled
+        ? 'obligations-badge'
+        : vulnerabilitiesRatedCount === vulnerabilitiesTotal && vulnerabilitiesTotal > 0
+          ? 'obligations-badge--success'
+          : vulnerabilitiesRatedCount === 0
+            ? 'obligations-badge--danger'
+            : 'obligations-badge'
+
+    const vulnerabilitiesCountValue = isVulnerabilitiesDisplayEnabled
+        ? `${vulnerabilitiesRatedCount} / ${vulnerabilitiesTotal}`
+        : '?/?'
+
+    const eccBadgeClassName =
+        eccOpenCount > 0
+            ? 'obligations-badge--danger'
+            : eccClassifiedCount > 0
+              ? 'obligations-badge--success'
+              : 'obligations-badge'
+
+    const eccCountValue = `${eccOpenCount} / ${eccClassifiedCount}`
 
     return (
         <>
@@ -244,12 +328,24 @@ export default function ViewProjects({ projectId }: { projectId: string }): JSX.
                 projectName={summaryData?.name}
                 projectVersion={summaryData?.version}
             />
-            <LinkProjects
-                show={show}
-                setShow={setShow}
-                projectId={projectId}
-            />
-            {summaryData?.name ? <Breadcrumb name={summaryData?.name} /> : <Breadcrumb name={' '} />}
+            {projectPayload && (
+                <LinkProjectsModal
+                    show={show}
+                    setShow={setShow}
+                    projectPayload={projectPayload}
+                    setProjectPayload={setProjectPayload as Dispatch<SetStateAction<ProjectPayload>>}
+                    mode='UPDATE'
+                />
+            )}
+            {summaryData?.name ? (
+                <Breadcrumb
+                    name={`${summaryData.name}${
+                        CommonUtils.isNullEmptyOrUndefinedString(summaryData.version) ? '' : ` (${summaryData.version})`
+                    }`}
+                />
+            ) : (
+                <Breadcrumb name={' '} />
+            )}
             <div className='container page-content'>
                 <Tab.Container
                     activeKey={activeKey}
@@ -278,62 +374,49 @@ export default function ViewProjects({ projectId }: { projectId: string }): JSX.
                                 <ListGroup.Item
                                     action
                                     eventKey='licenseClearing'
-                                    hidden={
-                                        session.status === 'authenticated' &&
-                                        session?.data.user?.userGroup === UserGroupType.SECURITY_USER
-                                    }
+                                    hidden={userIdentity?.userGroup === UserGroupType.SECURITY_USER}
                                 >
                                     <div className='my-2'>{t('License Clearing')}</div>
                                 </ListGroup.Item>
-                                <ListGroup.Item
-                                    action
-                                    eventKey='linkedPackages'
-                                >
-                                    <div className='my-2'>{t('Linked Packages')}</div>
-                                </ListGroup.Item>
+                                {isPackageFeatureEnabled && (
+                                    <ListGroup.Item
+                                        action
+                                        eventKey='linkedPackages'
+                                    >
+                                        <div className='my-2'>{t('Linked Packages')}</div>
+                                    </ListGroup.Item>
+                                )}
                                 <ListGroup.Item
                                     action
                                     eventKey='obligations'
-                                    hidden={
-                                        session.status === 'authenticated' &&
-                                        session?.data.user?.userGroup === UserGroupType.SECURITY_USER
-                                    }
+                                    hidden={userIdentity?.userGroup === UserGroupType.SECURITY_USER}
                                 >
-                                    <div className='my-2 d-flex align-items-center'>
-                                        <span className='me-2'>{t('Obligations')}</span>
-
-                                        <span
-                                            id='obligationsCount'
-                                            className={`badge ${
-                                                obligationsNonOpenCount === obligationsTotal && obligationsTotal > 0
-                                                    ? 'obligations-badge--success'
-                                                    : obligationsNonOpenCount === 0
-                                                      ? 'obligations-badge--danger'
-                                                      : 'obligations-badge'
-                                            }`}
-                                            aria-live='polite'
-                                        >
-                                            {obligationsLoading ? (
-                                                <span
-                                                    className='spinner-border spinner-border-sm'
-                                                    role='status'
-                                                    aria-hidden='true'
-                                                ></span>
-                                            ) : (
-                                                `${obligationsNonOpenCount} / ${obligationsTotal}`
-                                            )}
-                                        </span>
-                                    </div>
+                                    <SidebarCountBadge
+                                        badgeClassName={
+                                            obligationsNonOpenCount === obligationsTotal && obligationsTotal > 0
+                                                ? 'obligations-badge--success'
+                                                : obligationsNonOpenCount === 0
+                                                  ? 'obligations-badge--danger'
+                                                  : 'obligations-badge'
+                                        }
+                                        countId='obligationsCount'
+                                        isLoading={obligationsLoading}
+                                        label={t('Obligations')}
+                                        value={`${obligationsNonOpenCount} / ${obligationsTotal}`}
+                                    />
                                 </ListGroup.Item>
                                 <ListGroup.Item
                                     action
                                     eventKey='ecc'
-                                    hidden={
-                                        session.status === 'authenticated' &&
-                                        session?.data.user?.userGroup === UserGroupType.SECURITY_USER
-                                    }
+                                    hidden={userIdentity?.userGroup === UserGroupType.SECURITY_USER}
                                 >
-                                    <div className='my-2'>{t('ECC')}</div>
+                                    <SidebarCountBadge
+                                        badgeClassName={eccBadgeClassName}
+                                        countId='eccCount'
+                                        isLoading={eccLoading}
+                                        label={t('ECC')}
+                                        value={eccCountValue}
+                                    />
                                 </ListGroup.Item>
                                 <ListGroup.Item
                                     action
@@ -344,20 +427,14 @@ export default function ViewProjects({ projectId }: { projectId: string }): JSX.
                                 <ListGroup.Item
                                     action
                                     eventKey='attachments'
-                                    hidden={
-                                        session.status === 'authenticated' &&
-                                        session?.data.user?.userGroup === UserGroupType.SECURITY_USER
-                                    }
+                                    hidden={userIdentity?.userGroup === UserGroupType.SECURITY_USER}
                                 >
                                     <div className='my-2'>{t('Attachments')}</div>
                                 </ListGroup.Item>
                                 <ListGroup.Item
                                     action
                                     eventKey='attachmentUsages'
-                                    hidden={
-                                        session.status === 'authenticated' &&
-                                        session?.data.user?.userGroup === UserGroupType.SECURITY_USER
-                                    }
+                                    hidden={userIdentity?.userGroup === UserGroupType.SECURITY_USER}
                                 >
                                     <div className='my-2'>{t('Attachment Usages')}</div>
                                 </ListGroup.Item>
@@ -365,15 +442,18 @@ export default function ViewProjects({ projectId }: { projectId: string }): JSX.
                                     action
                                     eventKey='vulnerabilities'
                                 >
-                                    <div className='my-2'>{t('Vulnerabilities')}</div>
+                                    <SidebarCountBadge
+                                        badgeClassName={vulnerabilitiesBadgeClassName}
+                                        countId='vulnerabilitiesCount'
+                                        isLoading={vulnerabilitiesLoading}
+                                        label={t('Vulnerabilities')}
+                                        value={vulnerabilitiesCountValue}
+                                    />
                                 </ListGroup.Item>
                                 <ListGroup.Item
                                     action
                                     eventKey='changeLog'
-                                    hidden={
-                                        session.status === 'authenticated' &&
-                                        session?.data.user?.userGroup === UserGroupType.SECURITY_USER
-                                    }
+                                    hidden={userIdentity?.userGroup === UserGroupType.SECURITY_USER}
                                 >
                                     <div className='my-2'>{t('Change Log')}</div>
                                 </ListGroup.Item>
@@ -386,115 +466,107 @@ export default function ViewProjects({ projectId }: { projectId: string }): JSX.
                                         <Button
                                             variant='primary'
                                             className='me-2 col-auto'
-                                            onClick={() => handleEditProject(projectId)}
-                                            disabled={
-                                                session.status === 'authenticated' &&
-                                                session?.data.user?.userGroup === UserGroupType.SECURITY_USER
-                                            }
+                                            onClick={() => void preRequisite()}
+                                            disabled={userIdentity?.userGroup === UserGroupType.SECURITY_USER}
                                         >
-                                            {t('Edit Projects')}
+                                            {t('Edit Project')}
                                         </Button>
                                         <Button
                                             variant='secondary'
                                             className='col-auto'
                                             onClick={() => setShow(true)}
-                                            disabled={
-                                                session.status === 'authenticated' &&
-                                                session?.data.user?.userGroup === UserGroupType.SECURITY_USER
-                                            }
+                                            disabled={userIdentity?.userGroup === UserGroupType.SECURITY_USER}
                                         >
                                             {t('Link to Projects')}
                                         </Button>
-                                        <Dropdown className='col-auto'>
-                                            <Dropdown.Toggle
-                                                variant='dark'
-                                                id='exportSBOM'
-                                                className='px-2'
-                                                hidden={
-                                                    session.status === 'authenticated' &&
-                                                    session?.data.user?.userGroup === UserGroupType.SECURITY_USER
-                                                }
-                                            >
-                                                {t('Import SBOM')}
-                                            </Dropdown.Toggle>
-                                            <Dropdown.Menu>
-                                                <Dropdown.Item
-                                                    onClick={(e) => {
-                                                        e.stopPropagation()
-                                                        setImportSBOMMetadata({
-                                                            importType: 'CycloneDx',
-                                                            show: true,
-                                                            projectId: projectId,
-                                                            doNotReplace: false,
-                                                        })
-                                                    }}
-                                                >
-                                                    <span
-                                                        style={{
-                                                            display: 'inline-flex',
-                                                            alignItems: 'center',
-                                                            gap: '6px',
-                                                        }}
-                                                    >
-                                                        {t('replace existing releases and packages')}
-                                                        <ShowInfoOnHover
-                                                            text={t(
-                                                                'This will remove all current releases and packages and replace them with data from the SBOM',
-                                                            )}
-                                                        />
-                                                    </span>
-                                                </Dropdown.Item>
-                                                <Dropdown.Item
-                                                    onClick={(e) => {
-                                                        e.stopPropagation()
-                                                        setImportSBOMMetadata({
-                                                            importType: 'CycloneDx',
-                                                            show: true,
-                                                            projectId: projectId,
-                                                            doNotReplace: true,
-                                                        })
-                                                    }}
-                                                >
-                                                    <span
-                                                        style={{
-                                                            display: 'inline-flex',
-                                                            alignItems: 'center',
-                                                            gap: '6px',
-                                                        }}
-                                                    >
-                                                        {t('Add new releases and packages')}
-                                                        <ShowInfoOnHover
-                                                            text={t(
-                                                                'Adds new data from the SBOM without modifying existing releases and packages',
-                                                            )}
-                                                        />
-                                                    </span>
-                                                </Dropdown.Item>
-                                            </Dropdown.Menu>
-                                        </Dropdown>
-                                        <Dropdown className='col-auto'>
-                                            <Dropdown.Toggle
-                                                variant='dark'
-                                                id='exportSBOM'
-                                                className='px-2'
-                                                hidden={
-                                                    session.status === 'authenticated' &&
-                                                    session?.data.user?.userGroup === UserGroupType.SECURITY_USER
-                                                }
-                                            >
-                                                {t('Export SBOM')}
-                                            </Dropdown.Toggle>
-                                            <Dropdown.Menu>
-                                                <Dropdown.Item
-                                                    onClick={(e) => {
-                                                        e.stopPropagation()
-                                                        setShowExportProjectSbomModal(true)
-                                                    }}
-                                                >
-                                                    {t('CycloneDX')}
-                                                </Dropdown.Item>
-                                            </Dropdown.Menu>
-                                        </Dropdown>
+                                        {userIdentity?.userGroup &&
+                                            UserGroupPriority[userIdentity.userGroup] <=
+                                                UserGroupPriority[normalizedSbomImportExportAccessUserRole] && (
+                                                <>
+                                                    <Dropdown className='col-auto'>
+                                                        <Dropdown.Toggle
+                                                            variant='dark'
+                                                            id='exportSBOM'
+                                                            className='px-2'
+                                                        >
+                                                            {t('Import SBOM')}
+                                                        </Dropdown.Toggle>
+                                                        <Dropdown.Menu>
+                                                            <Dropdown.Item
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation()
+                                                                    setImportSBOMMetadata({
+                                                                        importType: 'CycloneDx',
+                                                                        show: true,
+                                                                        projectId: projectId,
+                                                                        doNotReplace: false,
+                                                                    })
+                                                                }}
+                                                            >
+                                                                <span
+                                                                    style={{
+                                                                        display: 'inline-flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '6px',
+                                                                    }}
+                                                                >
+                                                                    {t('replace existing releases and packages')}
+                                                                    <ShowInfoOnHover
+                                                                        text={t(
+                                                                            'This will remove all current releases and packages and replace them with data from the SBOM',
+                                                                        )}
+                                                                    />
+                                                                </span>
+                                                            </Dropdown.Item>
+                                                            <Dropdown.Item
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation()
+                                                                    setImportSBOMMetadata({
+                                                                        importType: 'CycloneDx',
+                                                                        show: true,
+                                                                        projectId: projectId,
+                                                                        doNotReplace: true,
+                                                                    })
+                                                                }}
+                                                            >
+                                                                <span
+                                                                    style={{
+                                                                        display: 'inline-flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '6px',
+                                                                    }}
+                                                                >
+                                                                    {t('Add new releases and packages')}
+                                                                    <ShowInfoOnHover
+                                                                        text={t(
+                                                                            'Adds new data from the SBOM without modifying existing releases and packages',
+                                                                        )}
+                                                                    />
+                                                                </span>
+                                                            </Dropdown.Item>
+                                                        </Dropdown.Menu>
+                                                    </Dropdown>
+                                                    <Dropdown className='col-auto'>
+                                                        <Dropdown.Toggle
+                                                            variant='dark'
+                                                            id='exportSBOM'
+                                                            className='px-2'
+                                                        >
+                                                            {t('Export SBOM')}
+                                                        </Dropdown.Toggle>
+                                                        <Dropdown.Menu>
+                                                            <Dropdown.Item
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation()
+                                                                    setShowExportProjectSbomModal(true)
+                                                                }}
+                                                            >
+                                                                {t('CycloneDX')}
+                                                            </Dropdown.Item>
+                                                        </Dropdown.Menu>
+                                                    </Dropdown>
+                                                </>
+                                            )}
                                     </Row>
                                 </Col>
                                 <Col
@@ -550,9 +622,11 @@ export default function ViewProjects({ projectId }: { projectId: string }): JSX.
                                             />
                                         )}
                                     </Tab.Pane>
-                                    <Tab.Pane eventKey='linkedPackages'>
-                                        <LinkedPackagesTab projectId={projectId} />
-                                    </Tab.Pane>
+                                    {isPackageFeatureEnabled && (
+                                        <Tab.Pane eventKey='linkedPackages'>
+                                            <LinkedPackagesTab projectId={projectId} />
+                                        </Tab.Pane>
+                                    )}
                                     <Tab.Pane eventKey='obligations'>
                                         <Obligations
                                             projectId={projectId}

@@ -11,14 +11,14 @@
 import { ColumnDef, getCoreRowModel, useReactTable } from '@tanstack/react-table'
 import { StatusCodes } from 'http-status-codes'
 import Link from 'next/link'
-import { getSession, signOut } from 'next-auth/react'
+
 import { useTranslations } from 'next-intl'
 import { SW360Table, TableFooter } from 'next-sw360'
 import { ReactNode, useEffect, useMemo, useState } from 'react'
 import { Spinner } from 'react-bootstrap'
 import type { Embedded, ErrorDetails, ModerationRequest, PageableQueryParam, PaginationMeta } from '@/object-types'
-import MessageService from '@/services/message.service'
-import { ApiUtils, CommonUtils } from '@/utils/index'
+import { ApiError, CommonUtils } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
 import HomeTableHeader from './HomeTableHeader'
 
 type EmbeddedTaskAssignments = Embedded<ModerationRequest, 'sw360:moderationRequests'>
@@ -105,9 +105,6 @@ function MyTaskAssignmentsWidget(): ReactNode {
 
         void (async () => {
             try {
-                const session = await getSession()
-                if (CommonUtils.isNullOrUndefined(session)) return signOut()
-
                 const queryUrl = CommonUtils.createUrlWithParams(
                     `moderationrequest/byState`,
                     Object.fromEntries(
@@ -121,10 +118,12 @@ function MyTaskAssignmentsWidget(): ReactNode {
                         ]),
                     ),
                 )
-                const response = await ApiUtils.GET(queryUrl, session.user.access_token, signal)
+                const response = await ApiUtils.GET(queryUrl, signal)
                 if (response.status !== StatusCodes.OK) {
                     const err = (await response.json()) as ErrorDetails
-                    throw new Error(err.message)
+                    throw new ApiError(err.message, {
+                        status: response.status,
+                    })
                 }
 
                 const data = (await response.json()) as EmbeddedTaskAssignments
@@ -135,11 +134,7 @@ function MyTaskAssignmentsWidget(): ReactNode {
                         : data['_embedded']['sw360:moderationRequests'],
                 )
             } catch (error) {
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                    return
-                }
-                const message = error instanceof Error ? error.message : String(error)
-                MessageService.error(message)
+                ApiUtils.reportError(error)
             } finally {
                 clearTimeout(timeout)
                 setShowProcessing(false)

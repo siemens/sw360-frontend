@@ -14,7 +14,6 @@ import { ColumnDef, getCoreRowModel, useReactTable } from '@tanstack/react-table
 import { StatusCodes } from 'http-status-codes'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
-import { signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { PageButtonHeader, PageSizeSelector, QuickFilter, SW360Table, TableFooter } from 'next-sw360'
 import { ReactNode, useEffect, useMemo, useState } from 'react'
@@ -31,21 +30,21 @@ import {
 } from '@/object-types'
 import DownloadService from '@/services/download.service'
 import MessageService from '@/services/message.service'
-import { ApiUtils, CommonUtils } from '@/utils'
+import { ApiError, CommonUtils } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
 
 function LicensePage(): ReactNode {
     const params = useSearchParams()
     const t = useTranslations('default')
     const [search, setSearch] = useState({})
     const [numberLicense, setNumberLicense] = useState(0)
-    const { data: session, status } = useSession()
     const deleteLicense = params.get('delete')
 
     useEffect(() => {
         setPageableQueryParam({
             page: 0,
             page_entries: 10,
-            sort: '',
+            sort: Object.keys(search).length > 0 ? 'score,asc' : '',
         })
     }, [
         search,
@@ -58,14 +57,6 @@ function LicensePage(): ReactNode {
     }
 
     useEffect(() => {
-        if (status === 'unauthenticated') {
-            void signOut()
-        }
-    }, [
-        status,
-    ])
-
-    useEffect(() => {
         if (!CommonUtils.isNullEmptyOrUndefinedString(deleteLicense)) {
             MessageService.success(t('License removed successfully'))
         }
@@ -74,22 +65,27 @@ function LicensePage(): ReactNode {
     ])
 
     const handleExportLicense = () => {
-        void DownloadService.download(`reports?module=licenses`, session, `Licenses.xlsx`)
+        void DownloadService.download(`reports?module=licenses`, `Licenses.xlsx`)
     }
 
     const columns = useMemo<ColumnDef<LicenseDetail>[]>(
         () => [
             {
                 id: 'shortName',
+                accessorKey: 'shortName',
                 header: t('License Shortname'),
                 cell: ({ row }) => {
-                    const { shortName } = row.original
+                    const { shortName, _links } = row.original
+                    const licenseId = _links?.self?.href?.split('/').filter(Boolean).at(-1)
+                    if (!licenseId) {
+                        return <>{shortName || '--'}</>
+                    }
                     return (
                         <Link
-                            href={`/licenses/detail?id=${shortName}`}
+                            href={`/licenses/detail?id=${encodeURIComponent(licenseId)}`}
                             className='link'
                         >
-                            {shortName}
+                            {shortName || licenseId || '--'}
                         </Link>
                     )
                 },
@@ -172,8 +168,6 @@ function LicensePage(): ReactNode {
 
         void (async () => {
             try {
-                if (CommonUtils.isNullOrUndefined(session)) return signOut()
-
                 const queryUrl = CommonUtils.createUrlWithParams(
                     `licenses`,
                     Object.fromEntries(
@@ -186,10 +180,12 @@ function LicensePage(): ReactNode {
                         ]),
                     ),
                 )
-                const response = await ApiUtils.GET(queryUrl, session.user.access_token, signal)
+                const response = await ApiUtils.GET(queryUrl, signal)
                 if (response.status !== StatusCodes.OK) {
                     const err = (await response.json()) as ErrorDetails
-                    throw new Error(err.message)
+                    throw new ApiError(err.message, {
+                        status: response.status,
+                    })
                 }
 
                 const data = (await response.json()) as Embedded<LicenseDetail, 'sw360:licenses'>
@@ -201,11 +197,7 @@ function LicensePage(): ReactNode {
                         : data['_embedded']['sw360:licenses'],
                 )
             } catch (error) {
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                    return
-                }
-                const message = error instanceof Error ? error.message : String(error)
-                MessageService.error(message)
+                ApiUtils.reportError(error)
             } finally {
                 clearTimeout(timeout)
                 setShowProcessing(false)

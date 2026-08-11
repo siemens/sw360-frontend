@@ -11,15 +11,13 @@
 
 import { ColumnDef, getCoreRowModel, useReactTable } from '@tanstack/react-table'
 import { StatusCodes } from 'http-status-codes'
-import { signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { SW360Table } from 'next-sw360'
 import React, { type JSX, useEffect, useMemo, useState } from 'react'
 import { Button, Col, Form, Modal, Row, Spinner } from 'react-bootstrap'
 import { ErrorDetails } from '@/object-types'
-import MessageService from '@/services/message.service'
-import CommonUtils from '@/utils/common.utils'
-import { ApiUtils } from '@/utils/index'
+import { ApiError } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
 
 interface Props {
     show: boolean
@@ -42,14 +40,11 @@ interface Department {
 export default function DepartmentModal({ show, setShow, department, setDepartment }: Props): JSX.Element {
     const t = useTranslations('default')
     const [selectingDepartment, setSelectingDepartment] = useState<string>(department || '')
-    const session = useSession()
 
     useEffect(() => {
-        if (session.status === 'unauthenticated') {
-            void signOut()
-        }
+        setSelectingDepartment(department || '')
     }, [
-        session,
+        department,
     ])
 
     const columns = useMemo<ColumnDef<Department>[]>(
@@ -62,7 +57,7 @@ export default function DepartmentModal({ show, setShow, department, setDepartme
                             className='form-check-input'
                             type='radio'
                             checked={row.original.departmentName == selectingDepartment}
-                            onClick={() => handleDepartmentSelect(row.original.departmentName)}
+                            onChange={() => handleDepartmentSelect(row.original.departmentName)}
                         />
                     </div>
                 ),
@@ -104,7 +99,6 @@ export default function DepartmentModal({ show, setShow, department, setDepartme
     const [showProcessing, setShowProcessing] = useState(false)
 
     useEffect(() => {
-        if (session.status === 'loading') return
         const controller = new AbortController()
         const signal = controller.signal
 
@@ -115,11 +109,12 @@ export default function DepartmentModal({ show, setShow, department, setDepartme
 
         void (async () => {
             try {
-                if (CommonUtils.isNullOrUndefined(session.data)) return signOut()
-                const response = await ApiUtils.GET('users/groupList', session.data.user.access_token, signal)
+                const response = await ApiUtils.GET('users/groupList', signal)
                 if (response.status !== StatusCodes.OK) {
                     const err = (await response.json()) as ErrorDetails
-                    throw new Error(err.message)
+                    throw new ApiError(err.message, {
+                        status: response.status,
+                    })
                 }
 
                 const departmentGroups = (await response.json()) as DepartmentGroups
@@ -137,11 +132,7 @@ export default function DepartmentModal({ show, setShow, department, setDepartme
 
                 setDepartments(transformedDepartments)
             } catch (error) {
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                    return
-                }
-                const message = error instanceof Error ? error.message : String(error)
-                MessageService.error(message)
+                ApiUtils.reportError(error)
             } finally {
                 clearTimeout(timeout)
                 setShowProcessing(false)
@@ -149,9 +140,7 @@ export default function DepartmentModal({ show, setShow, department, setDepartme
         })()
 
         return () => controller.abort()
-    }, [
-        session,
-    ])
+    }, [])
 
     const table = useReactTable({
         data: memoizedData,
@@ -196,7 +185,7 @@ export default function DepartmentModal({ show, setShow, department, setDepartme
                                         type='text'
                                         name='department'
                                         value={selectingDepartment}
-                                        readOnly
+                                        onChange={(e) => handleDepartmentSelect(e.target.value)}
                                     />
                                 </Col>
                             </Row>

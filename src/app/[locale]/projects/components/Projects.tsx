@@ -10,19 +10,36 @@
 
 'use client'
 
-import { ColumnDef, getCoreRowModel, SortingState, useReactTable } from '@tanstack/react-table'
+import {
+    ColumnDef,
+    ExpandedState,
+    getCoreRowModel,
+    getExpandedRowModel,
+    HeaderContext,
+    SortingState,
+    useReactTable,
+} from '@tanstack/react-table'
 import { StatusCodes } from 'http-status-codes'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { getSession, signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { AdvancedSearch, Breadcrumb, PageSizeSelector, SW360Table, TableFooter } from 'next-sw360'
-import { type JSX, useEffect, useMemo, useState } from 'react'
+import { type JSX, useCallback, useEffect, useMemo, useState } from 'react'
 import { Dropdown, OverlayTrigger, Spinner, Tooltip } from 'react-bootstrap'
-import { BsCheck2Square, BsClipboard, BsFillTrashFill, BsPencil } from 'react-icons/bs'
-import LicenseClearing from '@/components/LicenseClearing'
-import { useConfigValue } from '@/contexts'
 import {
+    BsCaretDownFill,
+    BsCaretRightFill,
+    BsCheck2Square,
+    BsClipboard,
+    BsFillTrashFill,
+    BsPaperclip,
+    BsPencil,
+} from 'react-icons/bs'
+import LicenseClearing, { type LicenseClearingData } from '@/components/LicenseClearing'
+import { useConfigKeyValue, useConfigValue } from '@/contexts'
+import {
+    Attachment,
+    ConfigKeys,
     Embedded,
     ErrorDetails,
     PageableQueryParam,
@@ -31,8 +48,11 @@ import {
     UIConfigKeys,
     UserGroupType,
 } from '@/object-types'
+import DownloadService from '@/services/download.service'
 import MessageService from '@/services/message.service'
-import { ApiUtils, CommonUtils } from '@/utils'
+import { ApiError, CommonUtils } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
+import { getAuthenticatedUserIdentity } from '@/utils/api/authenticatedUser.util'
 import ImportSBOMMetadata from '../../../../object-types/cyclonedx/ImportSBOMMetadata'
 import CreateClearingRequestModal from '../detail/[id]/components/CreateClearingRequestModal'
 import ViewClearingRequestModal from '../detail/[id]/components/ViewClearingRequestModal'
@@ -40,43 +60,86 @@ import DeleteProjectDialog from './DeleteProjectDialog'
 import ImportSBOMModal from './ImportSBOMModal'
 
 type EmbeddedProjects = Embedded<TypeProject, 'sw360:projects'>
+type LicenseClearingMap = Record<string, LicenseClearingData>
+
+interface ProjectWithSubRows extends TypeProject {
+    subRows?: ProjectWithSubRows[]
+}
 
 const Capitalize = (text: string) =>
     text.split('_').reduce((s, c) => s + ' ' + (c.charAt(0) + c.substring(1).toLocaleLowerCase()), '')
 
+interface GroupEntry {
+    key: string
+    text: string
+}
+
 function Project(): JSX.Element {
     const t = useTranslations('default')
-    const { data: session, status } = useSession()
     const params = useSearchParams()
     const router = useRouter()
     const [deleteProjectId, setDeleteProjectId] = useState<string>('')
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+    const [hasClearingRequest, setHasClearingRequest] = useState(false)
     const [importSBOMMetadata, setImportSBOMMetadata] = useState<ImportSBOMMetadata>({
         show: false,
         importType: 'SPDX',
     })
+    const [expandedState, setExpandedState] = useState<ExpandedState>({})
+    const [linkedProjectsData, setLinkedProjectsData] = useState<Record<string, TypeProject[]>>({})
 
     // Configs from backend
+    const mailRequestForProjectReport = useConfigKeyValue(ConfigKeys.MAIL_REQUEST_FOR_REPORT)
     const clearingRequestDisabledGroups = useConfigValue(
         UIConfigKeys.UI_ORG_ECLIPSE_SW360_DISABLE_CLEARING_REQUEST_FOR_PROJECT_GROUP,
     ) as string[] | null
+    const enableLinkedProjectsDisplay = useConfigValue(UIConfigKeys.UI_ENABLE_LINKED_PROJECTS_DISPLAY)
+    const showLinkedProjects = enableLinkedProjectsDisplay === true
 
     const [showCreateCRModal, setShowCreateCRModal] = useState(false)
     const [createCRProjectId, setCreateCRProjectId] = useState('')
 
     const [showViewCRModal, setShowViewCRModal] = useState(false)
     const [clearingRequestId, setClearingRequestId] = useState('')
-
-    useEffect(() => {
-        if (status === 'unauthenticated') {
-            signOut()
-        }
-    }, [
-        status,
+    const [licenseClearingData, setLicenseClearingData] = useState<LicenseClearingMap>({})
+    const [projectGroups, setProjectGroups] = useState<GroupEntry[]>([
+        {
+            key: 'None',
+            text: t('None'),
+        },
     ])
 
-    const handleDeleteProject = (projectId: string) => {
+    const [userIdentity, setUserIdentity] = useState<Awaited<ReturnType<typeof getAuthenticatedUserIdentity>> | null>(
+        null,
+    )
+    const [pageableQueryParam, setPageableQueryParam] = useState<PageableQueryParam>({
+        page: 0,
+        page_entries: 10,
+        sort: params.toString() ? 'score,asc' : 'name,asc',
+    })
+    const [paginationMeta, setPaginationMeta] = useState<PaginationMeta | undefined>({
+        size: 0,
+        totalElements: 0,
+        totalPages: 0,
+        number: 0,
+    })
+    const [projectData, setProjectData] = useState<ProjectWithSubRows[]>(() => [])
+    const [showProcessing, setShowProcessing] = useState(false)
+
+    useEffect(() => {
+        void (async () => {
+            try {
+                setUserIdentity(await getAuthenticatedUserIdentity())
+            } catch {
+                setUserIdentity(null)
+            }
+        })()
+    }, [])
+
+    const handleDeleteProject = (projectId: string, clearingRequestId?: string, clearingState?: string) => {
         setDeleteProjectId(projectId)
+        const hasOpenCR = clearingRequestId && (clearingState === 'OPEN' || clearingState === 'IN_PROGRESS')
+        setHasClearingRequest(!!hasOpenCR)
         setDeleteDialogOpen(true)
     }
 
@@ -85,12 +148,180 @@ function Project(): JSX.Element {
     }
 
     const handleEditProject = (projectId: string) => {
-        router.push(`/projects/edit/${projectId}`)
-        MessageService.success(t('You are editing the original document'))
+        const project = projectData.find((proj) => proj['_links']?.['self']?.['href']?.split('/').at(-1) === projectId)
+        const createdByEmail = project?.['_embedded']?.['createdBy']
+        if (userIdentity?.email === createdByEmail || userIdentity?.userGroup === UserGroupType.ADMIN) {
+            MessageService.info(t('You are editing the original document'))
+            router.push(`/projects/edit/${projectId}`)
+        } else {
+            MessageService.info(t('You will create a moderation request if you update'))
+            router.push(`/projects/edit/${projectId}`)
+        }
     }
 
-    const columns = useMemo<ColumnDef<TypeProject>[]>(
+    const fetchLinkedProjects = useCallback(async (projectId: string) => {
+        // Check if already fetched
+        setLinkedProjectsData((prev) => {
+            if (prev[projectId]) return prev // Already fetched
+
+            // Mark as being fetched
+            return {
+                ...prev,
+                [projectId]: [],
+            }
+        })
+
+        try {
+            const response = await ApiUtils.GET(`projects/${projectId}/linkedProjects?transitive=false`)
+
+            if (response.status !== StatusCodes.OK) {
+                const err = (await response.json()) as ErrorDetails
+                throw new ApiError(err.message, {
+                    status: response.status,
+                })
+            }
+
+            const data = (await response.json()) as EmbeddedProjects
+            const linkedProjects = data['_embedded']?.['sw360:projects'] ?? []
+
+            setLinkedProjectsData((prev) => ({
+                ...prev,
+                [projectId]: linkedProjects,
+            }))
+        } catch (error) {
+            ApiUtils.reportError(error)
+        }
+    }, [])
+
+    const columns = useMemo<ColumnDef<ProjectWithSubRows>[]>(
         () => [
+            ...(showLinkedProjects
+                ? [
+                      {
+                          id: 'expand',
+                          header: ({ table }: HeaderContext<ProjectWithSubRows, unknown>) => {
+                              const expandableRows = table.getCoreRowModel().rows.filter((r) => r.getCanExpand())
+                              if (expandableRows.length === 0) return null
+                              const allExpandableExpanded = expandableRows.every((r) => r.getIsExpanded())
+                              return (
+                                  <OverlayTrigger
+                                      overlay={
+                                          <Tooltip>
+                                              {allExpandableExpanded ? t('Collapse all') : t('Expand all')}
+                                          </Tooltip>
+                                      }
+                                  >
+                                      <button
+                                          onClick={() => {
+                                              if (allExpandableExpanded) {
+                                                  setExpandedState({})
+                                              } else {
+                                                  const newState: Record<string, boolean> = {}
+                                                  expandableRows.forEach((r) => {
+                                                      const projectId = r.original['_links']?.['self']?.['href']
+                                                          ?.split('/')
+                                                          .at(-1)
+                                                      if (projectId) {
+                                                          newState[r.id] = true
+                                                          void fetchLinkedProjects(projectId)
+                                                      }
+                                                  })
+                                                  setExpandedState(newState)
+                                              }
+                                          }}
+                                          style={{
+                                              background: 'none',
+                                              border: 'none',
+                                              cursor: 'pointer',
+                                              padding: 0,
+                                          }}
+                                          aria-label={allExpandableExpanded ? t('Collapse all') : t('Expand all')}
+                                      >
+                                          {allExpandableExpanded ? (
+                                              <BsCaretDownFill size={16} />
+                                          ) : (
+                                              <BsCaretRightFill size={16} />
+                                          )}
+                                      </button>
+                                  </OverlayTrigger>
+                              )
+                          },
+                          cell: ({
+                              row,
+                          }: {
+                              row: {
+                                  id: string
+                                  original: ProjectWithSubRows
+                                  getCanExpand: () => boolean
+                                  getIsExpanded: () => boolean
+                                  toggleExpanded: () => void
+                                  depth: number
+                              }
+                          }) => {
+                              // Only show expand button for top-level rows (depth=0) that have linked projects
+                              if (row.depth !== 0) {
+                                  return (
+                                      <div
+                                          style={{
+                                              width: '24px',
+                                          }}
+                                      />
+                                  )
+                              }
+
+                              const hasLinkedProjects =
+                                  row.original.linkedProjects && Object.keys(row.original.linkedProjects).length > 0
+
+                              if (!hasLinkedProjects) {
+                                  return (
+                                      <div
+                                          style={{
+                                              width: '24px',
+                                          }}
+                                      />
+                                  )
+                              }
+
+                              return (
+                                  <button
+                                      onClick={() => {
+                                          if (!row.getIsExpanded()) {
+                                              // Fetch linked projects on first expand
+                                              const projectId = row.original['_links']?.['self']?.['href']
+                                                  ?.split('/')
+                                                  .at(-1)
+                                              if (projectId) void fetchLinkedProjects(projectId)
+                                          }
+                                          row.toggleExpanded()
+                                      }}
+                                      style={{
+                                          background: 'none',
+                                          border: 'none',
+                                          cursor: 'pointer',
+                                          padding: 0,
+                                      }}
+                                      aria-label={row.getIsExpanded() ? t('Collapse') : t('Expand')}
+                                  >
+                                      {row.getIsExpanded() ? (
+                                          <BsCaretDownFill
+                                              size={14}
+                                              className='text-secondary'
+                                          />
+                                      ) : (
+                                          <BsCaretRightFill
+                                              size={14}
+                                              className='text-secondary'
+                                          />
+                                      )}
+                                  </button>
+                              )
+                          },
+                          meta: {
+                              width: '3%',
+                          },
+                      } as ColumnDef<ProjectWithSubRows>,
+                  ]
+                : []),
             {
                 id: 'name',
                 accessorKey: 'name',
@@ -100,16 +331,22 @@ function Project(): JSX.Element {
                     const { name, version } = row.original
                     const id = row.original['_links']['self']['href'].split('/').at(-1)
                     return (
-                        <Link
-                            href={`/projects/detail/${id}`}
-                            className='text-link'
+                        <span
+                            style={{
+                                paddingLeft: row.depth > 0 ? `${row.depth * 20}px` : undefined,
+                            }}
                         >
-                            {name} {!CommonUtils.isNullEmptyOrUndefinedString(version) && `(${version})`}
-                        </Link>
+                            <Link
+                                href={`/projects/detail/${id}`}
+                                className='text-link'
+                            >
+                                {name} {!CommonUtils.isNullEmptyOrUndefinedString(version) && `(${version})`}
+                            </Link>
+                        </span>
                     )
                 },
                 meta: {
-                    width: '17.5%',
+                    width: showLinkedProjects ? '14.5%' : '17.5%',
                 },
             },
             {
@@ -193,7 +430,16 @@ function Project(): JSX.Element {
                 enableSorting: false,
                 cell: ({ row }) => {
                     const id = row.original['_links']['self']['href'].split('/').at(-1)
-                    return <>{id && <LicenseClearing projectId={id} />}</>
+                    return (
+                        <>
+                            {id && (
+                                <LicenseClearing
+                                    projectId={id}
+                                    data={licenseClearingData[id]}
+                                />
+                            )}
+                        </>
+                    )
                 },
                 meta: {
                     width: '10%',
@@ -214,13 +460,101 @@ function Project(): JSX.Element {
                         clearingRequestDisabledGroups,
                         row.original.visibility,
                     )
+                    const attachments: Attachment[] = row.original._embedded?.['sw360:attachments'] ?? []
+
+                    const handleSingleAttachmentDownload = async () => {
+                        if (attachments.length !== 1) return
+                        const att = attachments[0]
+                        await DownloadService.download(
+                            `projects/${id}/attachments/${att.attachmentContentId}`,
+                            att.filename,
+                        )
+                    }
+
                     return (
                         <>
                             {id && (
-                                <span className='d-flex justify-content-evenly'>
+                                <span className='d-flex align-items-center justify-content-center'>
+                                    <span
+                                        className='d-inline-flex align-items-center justify-content-center'
+                                        style={{
+                                            width: 28,
+                                            height: 28,
+                                        }}
+                                    >
+                                        {attachments.length === 1 && (
+                                            <OverlayTrigger
+                                                placement='left'
+                                                overlay={
+                                                    <Tooltip>
+                                                        <div className='text-start'>
+                                                            {attachments[0].filename}
+                                                            <br />
+                                                            {t('by')} {attachments[0].createdBy ?? ''}
+                                                        </div>
+                                                    </Tooltip>
+                                                }
+                                            >
+                                                <span
+                                                    className='d-inline-flex align-items-center justify-content-center'
+                                                    style={{
+                                                        width: 28,
+                                                        height: 28,
+                                                        cursor: 'pointer',
+                                                    }}
+                                                    onClick={() => void handleSingleAttachmentDownload()}
+                                                >
+                                                    <BsPaperclip
+                                                        className='btn-icon'
+                                                        size={20}
+                                                    />
+                                                </span>
+                                            </OverlayTrigger>
+                                        )}
+                                        {attachments.length > 1 && (
+                                            <OverlayTrigger
+                                                placement='left'
+                                                overlay={
+                                                    <Tooltip>
+                                                        <div className='text-start'>
+                                                            <strong>{`${attachments.length} ${t('Attachments')}`}</strong>
+                                                            {attachments.map((att) => (
+                                                                <div key={att.attachmentContentId}>
+                                                                    {att.filename} ({t('by')} {att.createdBy ?? ''})
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </Tooltip>
+                                                }
+                                            >
+                                                <Link
+                                                    href={`/projects/detail/${id}?tab=attachments`}
+                                                    className='d-inline-flex align-items-center justify-content-center position-relative'
+                                                    style={{
+                                                        width: 28,
+                                                        height: 28,
+                                                        cursor: 'pointer',
+                                                    }}
+                                                >
+                                                    <BsPaperclip
+                                                        className='btn-icon'
+                                                        size={20}
+                                                    />
+                                                    <span className='position-absolute badge rounded-pill bg-primary attachment-badge'>
+                                                        {attachments.length}
+                                                    </span>
+                                                </Link>
+                                            </OverlayTrigger>
+                                        )}
+                                    </span>
+                                    <span className='border-start align-self-stretch mx-1 my-1' />
                                     <OverlayTrigger overlay={<Tooltip>{t('Edit')}</Tooltip>}>
                                         <span
-                                            className='d-inline-block'
+                                            className='d-inline-flex align-items-center justify-content-center'
+                                            style={{
+                                                width: 28,
+                                                height: 28,
+                                            }}
                                             onClick={() => handleEditProject(id)}
                                         >
                                             <BsPencil
@@ -229,10 +563,15 @@ function Project(): JSX.Element {
                                             />
                                         </span>
                                     </OverlayTrigger>
+                                    <span className='border-start align-self-stretch mx-1 my-1' />
                                     {projectClearingRequestId && projectClearingRequestId !== '' ? (
                                         <OverlayTrigger overlay={<Tooltip>{t('View Clearing Request')}</Tooltip>}>
                                             <span
-                                                className='d-inline-block'
+                                                className='d-inline-flex align-items-center justify-content-center'
+                                                style={{
+                                                    width: 28,
+                                                    height: 28,
+                                                }}
                                                 onClick={() => {
                                                     setClearingRequestId(projectClearingRequestId)
                                                     setShowViewCRModal(true)
@@ -247,7 +586,11 @@ function Project(): JSX.Element {
                                     ) : crIsAllowed ? (
                                         <OverlayTrigger overlay={<Tooltip>{t('Create Clearing Request')}</Tooltip>}>
                                             <span
-                                                className='d-inline-block'
+                                                className='d-inline-flex align-items-center justify-content-center'
+                                                style={{
+                                                    width: 28,
+                                                    height: 28,
+                                                }}
                                                 onClick={() => {
                                                     setCreateCRProjectId(id)
                                                     setShowCreateCRModal(true)
@@ -269,7 +612,13 @@ function Project(): JSX.Element {
                                                 </Tooltip>
                                             }
                                         >
-                                            <span className={'d-inline-block'}>
+                                            <span
+                                                className='d-inline-flex align-items-center justify-content-center'
+                                                style={{
+                                                    width: 28,
+                                                    height: 28,
+                                                }}
+                                            >
                                                 <BsCheck2Square
                                                     size={20}
                                                     className='btn-icon overlay-trigger icon-disabled'
@@ -277,10 +626,15 @@ function Project(): JSX.Element {
                                             </span>
                                         </OverlayTrigger>
                                     )}
+                                    <span className='border-start align-self-stretch mx-1 my-1' />
                                     <OverlayTrigger overlay={<Tooltip>{t('Duplicate')}</Tooltip>}>
                                         <Link
                                             href={`/projects/duplicate/${id}`}
-                                            className='overlay-trigger'
+                                            className='overlay-trigger d-inline-flex align-items-center justify-content-center'
+                                            style={{
+                                                width: 28,
+                                                height: 28,
+                                            }}
                                         >
                                             <BsClipboard
                                                 className='btn-icon mt-0'
@@ -289,12 +643,25 @@ function Project(): JSX.Element {
                                         </Link>
                                     </OverlayTrigger>
 
+                                    <span className='border-start align-self-stretch mx-1 my-1' />
                                     <OverlayTrigger overlay={<Tooltip>{t('Delete')}</Tooltip>}>
-                                        <span className='d-inline-block'>
+                                        <span
+                                            className='d-inline-flex align-items-center justify-content-center'
+                                            style={{
+                                                width: 28,
+                                                height: 28,
+                                            }}
+                                        >
                                             <BsFillTrashFill
                                                 className='btn-icon'
                                                 size={20}
-                                                onClick={() => handleDeleteProject(id)}
+                                                onClick={() => {
+                                                    if (projectClearingRequestId && projectClearingRequestId !== '') {
+                                                        handleDeleteProject(id, projectClearingRequestId, clearingState)
+                                                    } else {
+                                                        handleDeleteProject(id)
+                                                    }
+                                                }}
                                             />
                                         </span>
                                     </OverlayTrigger>
@@ -310,27 +677,75 @@ function Project(): JSX.Element {
         ],
         [
             t,
+            licenseClearingData,
+            showLinkedProjects,
         ],
     )
-    const [pageableQueryParam, setPageableQueryParam] = useState<PageableQueryParam>({
-        page: 0,
-        page_entries: 10,
-        sort: 'name,asc',
-    })
-    const [paginationMeta, setPaginationMeta] = useState<PaginationMeta | undefined>({
-        size: 0,
-        totalElements: 0,
-        totalPages: 0,
-        number: 0,
-    })
-    const [projectData, setProjectData] = useState<TypeProject[]>(() => [])
-    const memoizedData = useMemo(
-        () => projectData,
-        [
-            projectData,
-        ],
-    )
-    const [showProcessing, setShowProcessing] = useState(false)
+
+    const memoizedData = useMemo(() => {
+        if (!showLinkedProjects) return projectData
+
+        // Add subRows from linkedProjectsData
+        return projectData.map((project) => {
+            const id = project['_links']?.['self']?.['href']?.split('/').at(-1)
+            if (!id) return project
+
+            // Check if this project has linked projects
+            const hasLinkedProjects = project.linkedProjects && Object.keys(project.linkedProjects).length > 0
+            if (!hasLinkedProjects) {
+                return project
+            }
+
+            // Get fetched linked projects data
+            const linkedProjects = linkedProjectsData[id]
+            if (!linkedProjects || linkedProjects.length === 0) {
+                // Return project but mark it as expandable (subRows will be fetched on expand)
+                return {
+                    ...project,
+                    subRows: [], // Empty array to make row expandable
+                }
+            }
+
+            return {
+                ...project,
+                subRows: linkedProjects,
+            }
+        })
+    }, [
+        projectData,
+        showLinkedProjects,
+        linkedProjectsData,
+    ])
+
+    useEffect(() => {
+        const controller = new AbortController()
+        const signal = controller.signal
+
+        void (async () => {
+            try {
+                const response = await ApiUtils.GET('projects/groups', signal)
+                if (response.status !== StatusCodes.OK) {
+                    const err = (await response.json()) as ErrorDetails
+                    throw new ApiError(err.message, {
+                        status: response.status,
+                    })
+                }
+                const data = (await response.json()) as string[]
+                const mappedData = data.map(
+                    (d: string) =>
+                        ({
+                            key: d,
+                            text: d,
+                        }) as GroupEntry,
+                )
+                setProjectGroups(mappedData)
+            } catch (error) {
+                ApiUtils.reportError(error)
+            }
+        })()
+
+        return () => controller.abort()
+    }, [])
 
     useEffect(() => {
         const controller = new AbortController()
@@ -343,9 +758,6 @@ function Project(): JSX.Element {
 
         void (async () => {
             try {
-                const session = await getSession()
-                if (CommonUtils.isNullOrUndefined(session)) return signOut()
-
                 const searchParams = Object.fromEntries(params.entries())
                 const queryUrl = CommonUtils.createUrlWithParams(
                     `projects`,
@@ -353,16 +765,19 @@ function Project(): JSX.Element {
                         Object.entries({
                             ...searchParams,
                             ...pageableQueryParam,
+                            allDetails: 'true',
                         }).map(([key, value]) => [
                             key,
                             String(value),
                         ]),
                     ),
                 )
-                const response = await ApiUtils.GET(queryUrl, session.user.access_token, signal)
+                const response = await ApiUtils.GET(queryUrl, signal)
                 if (response.status !== StatusCodes.OK) {
                     const err = (await response.json()) as ErrorDetails
-                    throw new Error(err.message)
+                    throw new ApiError(err.message, {
+                        status: response.status,
+                    })
                 }
 
                 const data = (await response.json()) as EmbeddedProjects
@@ -373,11 +788,7 @@ function Project(): JSX.Element {
                         : data['_embedded']['sw360:projects'],
                 )
             } catch (error) {
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                    return
-                }
-                const message = error instanceof Error ? error.message : String(error)
-                MessageService.error(message)
+                ApiUtils.reportError(error)
             } finally {
                 clearTimeout(timeout)
                 setShowProcessing(false)
@@ -394,22 +805,77 @@ function Project(): JSX.Element {
         setPageableQueryParam({
             page: 0,
             page_entries: 10,
-            sort: '',
+            sort: params.toString() ? 'score,asc' : '',
         })
     }, [
         params.toString(),
     ])
 
-    const table = useReactTable({
+    // Fetch license clearing counts in batch after project data is loaded
+    useEffect(() => {
+        if (projectData.length === 0) {
+            setLicenseClearingData({})
+            return
+        }
+
+        void (async () => {
+            try {
+                const projectIds = projectData
+                    .map((project) => project['_links']['self']['href'].split('/').at(-1))
+                    .filter((id): id is string => id !== undefined)
+
+                if (projectIds.length === 0) return
+
+                const response = await ApiUtils.POST('projects/licenseClearingCount', projectIds)
+
+                if (response.status !== StatusCodes.OK) {
+                    const err = (await response.json()) as ErrorDetails
+                    throw new ApiError(err.message, {
+                        status: response.status,
+                    })
+                }
+
+                const data = (await response.json()) as LicenseClearingMap
+                setLicenseClearingData(data)
+            } catch (error) {
+                ApiUtils.reportError(error)
+            }
+        })()
+    }, [
+        projectData,
+    ])
+
+    const table = useReactTable<ProjectWithSubRows>({
         data: memoizedData,
         columns,
         getCoreRowModel: getCoreRowModel(),
+        getRowId: (
+            row: ProjectWithSubRows,
+            _index: number,
+            parent?: {
+                id: string
+            },
+        ) =>
+            parent
+                ? `${parent.id}_${row['_links']?.['self']?.['href']?.split('/').at(-1) ?? ''}`
+                : (row['_links']?.['self']?.['href']?.split('/').at(-1) ?? ''),
+        ...(showLinkedProjects && {
+            getExpandedRowModel: getExpandedRowModel(),
+            getSubRows: (row: ProjectWithSubRows) => row.subRows,
+            getRowCanExpand: (row) => {
+                return !!(row.original.linkedProjects && Object.keys(row.original.linkedProjects).length > 0)
+            },
+            onExpandedChange: setExpandedState,
+        }),
 
         // table state config
         state: {
+            ...(showLinkedProjects && {
+                expanded: expandedState,
+            }),
             columnVisibility: {
-                actions: !(session?.user?.userGroup === UserGroupType.SECURITY_USER),
-                licenseClearing: !(session?.user?.userGroup === UserGroupType.SECURITY_USER),
+                actions: !(userIdentity?.userGroup === UserGroupType.SECURITY_USER),
+                licenseClearing: !(userIdentity?.userGroup === UserGroupType.SECURITY_USER),
             },
             pagination: {
                 pageIndex: pageableQueryParam.page,
@@ -477,36 +943,42 @@ function Project(): JSX.Element {
 
     const exportProjectSpreadsheet = async ({ withLinkedRelease }: { withLinkedRelease: boolean }) => {
         try {
-            const session = await getSession()
-            if (CommonUtils.isNullOrUndefined(session)) return signOut()
-            if (withLinkedRelease === false) {
-                const response = await ApiUtils.GET('reports?module=PROJECTS', session.user.access_token)
-                if (response.status == StatusCodes.OK) {
-                    MessageService.success(t('Excel report generation has started'))
-                } else if (response.status == StatusCodes.FORBIDDEN) {
+            const mailEnabled = mailRequestForProjectReport === 'true'
+            const searchParamsString = params.toString()
+            const baseUrl = withLinkedRelease
+                ? 'reports?module=PROJECTS&withlinkedreleases=true'
+                : 'reports?module=PROJECTS'
+            const url = searchParamsString ? `${baseUrl}&${searchParamsString}` : baseUrl
+
+            if (!mailEnabled) {
+                // If mail is not enabled, download the file immediately
+                const currentDate = new Date().toISOString().split('T')[0]
+                const fileName = `Projects-${currentDate}.xlsx`
+                const statusCode = await DownloadService.download(url, fileName)
+                if (statusCode === StatusCodes.OK) {
+                    MessageService.success(t('Spreadsheet download is successful'))
+                } else if (statusCode === StatusCodes.FORBIDDEN) {
                     MessageService.warn(t('Access Denied'))
-                } else if (response.status == StatusCodes.INTERNAL_SERVER_ERROR) {
+                } else if (statusCode === StatusCodes.INTERNAL_SERVER_ERROR) {
                     MessageService.error(t('Internal server error'))
-                } else if (response.status == StatusCodes.UNAUTHORIZED) {
+                } else if (statusCode === StatusCodes.UNAUTHORIZED) {
                     MessageService.error(t('Unauthorized request'))
                 }
             } else {
-                const response = await ApiUtils.GET(
-                    'reports?module=PROJECTS&withLinkedRelease=true',
-                    session.user.access_token,
-                )
-                if (response.status == StatusCodes.OK) {
+                // If mail is enabled, just send the request and show message
+                const response = await ApiUtils.GET(url)
+                if (response.status === StatusCodes.OK) {
                     MessageService.success(t('Excel report generation has started'))
-                } else if (response.status == StatusCodes.FORBIDDEN) {
+                } else if (response.status === StatusCodes.FORBIDDEN) {
                     MessageService.warn(t('Access Denied'))
-                } else if (response.status == StatusCodes.INTERNAL_SERVER_ERROR) {
+                } else if (response.status === StatusCodes.INTERNAL_SERVER_ERROR) {
                     MessageService.error(t('Internal server error'))
-                } else if (response.status == StatusCodes.UNAUTHORIZED) {
+                } else if (response.status === StatusCodes.UNAUTHORIZED) {
                     MessageService.error(t('Unauthorized request'))
                 }
             }
         } catch (e) {
-            console.log(e)
+            ApiUtils.reportError(e)
         }
     }
 
@@ -558,13 +1030,9 @@ function Project(): JSX.Element {
         },
         {
             fieldName: t('Group'),
-            value: [
-                {
-                    key: 'None',
-                    text: t('None'),
-                },
-            ],
+            value: projectGroups,
             paramName: 'group',
+            infoHoverText: t('Advanced_Search_Group_Empty_Info'),
         },
         {
             fieldName: t('State'),
@@ -575,7 +1043,7 @@ function Project(): JSX.Element {
                 },
                 {
                     key: 'PHASE_OUT',
-                    text: t('PhaseOut'),
+                    text: t('Phaseout'),
                 },
                 {
                     key: 'UNKNOWN',
@@ -606,11 +1074,17 @@ function Project(): JSX.Element {
             fieldName: t('Tag'),
             value: '',
             paramName: 'tag',
+            infoHoverText: t('Advanced_Search_Tag_Empty_Info'),
         },
         {
             fieldName: t('Additional Data'),
             value: '',
             paramName: 'additionalData',
+        },
+        {
+            fieldName: t('Attachment Author'),
+            value: '',
+            paramName: 'attachmentAuthor',
         },
     ]
 
@@ -625,6 +1099,7 @@ function Project(): JSX.Element {
                     projectId={deleteProjectId}
                     show={deleteDialogOpen}
                     setShow={setDeleteDialogOpen}
+                    hasClearingRequest={hasClearingRequest}
                 />
             )}
             <Breadcrumb name={t('Projects')} />
@@ -647,20 +1122,14 @@ function Project(): JSX.Element {
                                         <button
                                             className='btn btn-primary'
                                             onClick={handleAddProject}
-                                            disabled={
-                                                status === 'authenticated' &&
-                                                session?.user?.userGroup === UserGroupType.SECURITY_USER
-                                            }
+                                            disabled={userIdentity?.userGroup === UserGroupType.SECURITY_USER}
                                         >
                                             {t('Add Project')}
                                         </button>
                                         <Dropdown>
                                             <Dropdown.Toggle
                                                 variant='secondary'
-                                                hidden={
-                                                    status === 'authenticated' &&
-                                                    session?.user?.userGroup === UserGroupType.SECURITY_USER
-                                                }
+                                                hidden={userIdentity?.userGroup === UserGroupType.SECURITY_USER}
                                             >
                                                 {t('Import SBOM')}
                                             </Dropdown.Toggle>

@@ -10,10 +10,12 @@
 'use client'
 import { useTranslations } from 'next-intl'
 import { ShowInfoOnHover } from 'next-sw360'
-import type { JSX } from 'react'
+import { type JSX, useEffect } from 'react'
+import DateField from '@/components/DateField'
 
 import { useConfigValue } from '@/contexts'
 import { ProjectPayload, UIConfigKeys } from '@/object-types'
+import { CommonUtils } from '@/utils/index'
 
 interface Props {
     projectPayload: ProjectPayload
@@ -28,12 +30,33 @@ export default function Clearing({ projectPayload, setProjectPayload }: Props): 
     const projectClearingTeams = useConfigValue(UIConfigKeys.UI_CLEARING_TEAMS) as string[] | null
     const unknownClearingTeamEnabled = useConfigValue(UIConfigKeys.UI_CLEARING_TEAM_UNKNOWN_ENABLED) as boolean | null
 
+    useEffect(() => {
+        if (CommonUtils.isNullEmptyOrUndefinedString(projectPayload.clearingTeam)) {
+            if (!CommonUtils.isNullEmptyOrUndefinedArray(projectClearingTeams)) {
+                setProjectPayload({
+                    ...projectPayload,
+                    clearingTeam: projectClearingTeams[1],
+                })
+            } else if (unknownClearingTeamEnabled) {
+                setProjectPayload({
+                    ...projectPayload,
+                    clearingTeam: 'UNKNOWN',
+                })
+            }
+        }
+    }, [
+        projectClearingTeams,
+        unknownClearingTeamEnabled,
+    ])
+
     const updateInputField = (event: React.ChangeEvent<HTMLSelectElement | HTMLInputElement | HTMLTextAreaElement>) => {
         setProjectPayload({
             ...projectPayload,
             [event.target.name]: event.target.value,
         })
     }
+
+    // local state and validation are handled by DateField component
 
     return (
         <>
@@ -82,7 +105,7 @@ export default function Clearing({ projectPayload, setProjectPayload }: Props): 
                             value={projectPayload.clearingTeam ?? 'UNKNOWN'}
                             onChange={updateInputField}
                         >
-                            {unknownClearingTeamEnabled && <option value={'Unknown'}>{t('Unknown')}</option>}
+                            {unknownClearingTeamEnabled && <option value={'UNKNOWN'}>{t('Unknown')}</option>}
                             {projectClearingTeams &&
                                 projectClearingTeams.map((team) => (
                                     <option
@@ -95,27 +118,19 @@ export default function Clearing({ projectPayload, setProjectPayload }: Props): 
                         </select>
                     </div>
                     <div className='col-lg-4'>
-                        <label
-                            htmlFor='addProjects.deadlinePreEvaluation'
-                            className='form-label fw-bold'
-                        >
-                            {t('Deadline for pre-evaluation')}
-                        </label>
-                        <input
-                            type='text'
-                            className='form-control'
-                            aria-label='Deadline for pre-evaluation'
+                        <DateField
                             id='addProjects.deadlinePreEvaluation'
-                            placeholder='Pre-evaluation date YYYY-MM-DD'
-                            onFocus={(e: React.FocusEvent<HTMLInputElement>) => {
-                                e.target.type = 'date'
-                            }}
-                            onBlur={(e: React.FocusEvent<HTMLInputElement>) => {
-                                e.target.type = 'text'
-                            }}
                             name='preevaluationDeadline'
-                            value={projectPayload.preevaluationDeadline}
-                            onChange={updateInputField}
+                            ariaLabel='Deadline for pre-evaluation'
+                            label={t('Deadline for pre-evaluation')}
+                            placeholder='Pre-evaluation date YYYY-MM-DD'
+                            value={projectPayload.preevaluationDeadline ?? ''}
+                            onChange={(normalized) => {
+                                setProjectPayload({
+                                    ...projectPayload,
+                                    preevaluationDeadline: normalized,
+                                })
+                            }}
                         />
                     </div>
                 </div>
@@ -127,12 +142,9 @@ export default function Clearing({ projectPayload, setProjectPayload }: Props): 
                         {t('Clearing summary')}
                     </label>
                     <textarea
-                        className='form-control'
+                        className='form-control textarea-summary'
                         aria-label='Clearing Summary'
                         id='addProjects.clearingSummary'
-                        style={{
-                            height: '120px',
-                        }}
                         name='clearingSummary'
                         value={projectPayload.clearingSummary}
                         onChange={updateInputField}
@@ -162,12 +174,12 @@ export default function Clearing({ projectPayload, setProjectPayload }: Props): 
                         htmlFor='addProjects.generalRiskThirdPartySoftware'
                         className='form-label fw-bold'
                     >
-                        {t('General risk 3rd party software')}
+                        {t('General risks 3rd party software')}
                     </label>
                     <textarea
                         className='form-control'
                         id='addProjects.generalRiskThirdPartySoftware'
-                        aria-label='General risk 3rd party software'
+                        aria-label={t('General risks 3rd party software')}
                         style={{
                             height: '120px',
                         }}

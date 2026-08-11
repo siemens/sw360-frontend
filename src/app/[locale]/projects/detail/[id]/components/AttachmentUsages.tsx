@@ -21,7 +21,6 @@ import {
 import { StatusCodes } from 'http-status-codes'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { getSession, signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { PaddedCell, SW360Table } from 'next-sw360'
 import { Dispatch, type JSX, SetStateAction, useEffect, useMemo, useRef, useState } from 'react'
@@ -33,7 +32,6 @@ import {
     AttachmentUsages,
     Embedded,
     ErrorDetails,
-    NestedRows,
     Project,
     Release,
     SaveUsagesPayload,
@@ -41,7 +39,8 @@ import {
     UserGroupType,
 } from '@/object-types'
 import MessageService from '@/services/message.service'
-import { ApiUtils, CommonUtils } from '@/utils'
+import { ApiError, CommonUtils } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
 
 type LinkedProjects = Embedded<Project, 'sw360:projects'>
 
@@ -71,44 +70,64 @@ function isSourceCodeBundleEnabled(type: string): boolean {
     return types.indexOf(type) !== -1
 }
 
-interface ExtendedNestedRows<K> extends NestedRows<K> {
+interface ExtendedNestedRows<K> {
+    node: K
+    children?: ExtendedNestedRows<K>[]
     projectPath?: string
 }
-const releaseMatchesFilter = (release: Release, filter: string, saveUsagesPayload?: SaveUsagesPayload): boolean => {
-    const releaseId = release._links?.self.href.split('/').at(-1) ?? ''
+const releaseMatchesFilter = (
+    release: ExtendedNestedRows<TypedProject | TypedRelease | TypedAttachment>,
+    filter: string,
+    saveUsagesPayload?: SaveUsagesPayload,
+    projectPath?: string,
+): boolean => {
+    const releaseId = release.node.entity._links?.self.href.split('/').at(-1) ?? ''
 
     if (!filter) return true
-    const attachments = release.attachments ?? []
+    const attachments = release.children ?? []
     switch (filter) {
         case 'withCli':
-            return attachments.some((att) => att.attachmentType === 'CLI' || att.attachmentType === 'CLX')
+            return attachments.some((a) => {
+                const att = a.node.entity as Attachment
+                return att.attachmentType === 'CLI' || att.attachmentType === 'CLX'
+            })
         case 'withAttachments':
             return attachments.length > 0
         case 'withoutSrc':
-            return !attachments.some((att) => att.attachmentType === 'SOURCE' || att.attachmentType === 'SRC')
+            return !attachments.some((a) => {
+                const att = a.node.entity as Attachment
+                return att.attachmentType === 'SOURCE' || att.attachmentType === 'SRC'
+            })
         case 'withoutAttachments':
             return attachments.length === 0
         case 'withoutCliUsage': {
             if (!saveUsagesPayload || !releaseId) return true
-            const cliAttachments = attachments.filter(
-                (att) => att.attachmentType === 'CLI' || att.attachmentType === 'CLX' || att.attachmentType === 'ISR',
-            )
+            const cliAttachments = attachments.filter((a) => {
+                const att = a.node.entity as Attachment
+                return att.attachmentType === 'CLI' || att.attachmentType === 'CLX' || att.attachmentType === 'ISR'
+            })
             if (cliAttachments.length === 0) return false
 
-            return !cliAttachments.some((att) =>
-                saveUsagesPayload.selected.includes(`${releaseId}_licenseInfo_${att.attachmentContentId}`),
-            )
+            return cliAttachments.some((a) => {
+                const att = a.node.entity as Attachment
+                const projectPath = a.projectPath
+                return !saveUsagesPayload.selected.includes(
+                    `${projectPath ? `${projectPath}-` : ''}${releaseId}_licenseInfo_${att.attachmentContentId}`,
+                )
+            })
         }
         case 'withoutSourceUsage': {
             if (!saveUsagesPayload || !releaseId) return true
-            const sourceAttachments = attachments.filter(
-                (att) => att.attachmentType === 'SOURCE' || att.attachmentType === 'SRC',
-            )
+            const sourceAttachments = attachments.filter((a) => {
+                const att = a.node.entity as Attachment
+                return att.attachmentType === 'SOURCE' || att.attachmentType === 'SRC'
+            })
             if (sourceAttachments.length === 0) return false
 
-            return !sourceAttachments.some((att) =>
-                saveUsagesPayload.selected.includes(`${releaseId}_sourcePackage_${att.attachmentContentId}`),
-            )
+            return sourceAttachments.some((a) => {
+                const att = a.node.entity as Attachment
+                return !saveUsagesPayload.selected.includes(`${releaseId}_sourcePackage_${att.attachmentContentId}`)
+            })
         }
         default:
             return true
@@ -159,13 +178,12 @@ const filterRows = (
                 : []
         let matchesFilter = true
         if (node.type === 'release') {
-            const releaseEntity = node.entity as Release
-            matchesFilter = releaseMatchesFilter(releaseEntity, filter, saveUsagesPayload)
+            matchesFilter = releaseMatchesFilter(row, filter, saveUsagesPayload)
         }
         const matchesSearch = rowMatchesSearch(row, term)
         let keepRow = false
         if (node.type === 'project') {
-            keepRow = matchesSearch || filteredChildren.length > 0
+            keepRow = (matchesSearch && !CommonUtils.isNullEmptyOrUndefinedString(term)) || filteredChildren.length > 0
         } else {
             keepRow = matchesFilter && matchesSearch
         }
@@ -193,6 +211,7 @@ function AttachmentUsagesComponent({ projectId }: { projectId: string }): JSX.El
 
     const [showProcessingLinkedProjects, setShowProcessingLinkedProjects] = useState(false)
     const [showProcessingAttachmentUsages, setShowProcessingAttachmentUsages] = useState(false)
+    const [isTableBuilding, setIsTableBuilding] = useState(false)
 
     const [linkedProjects, setLinkedProjects] = useState<Project[]>(() => [])
     const memoizedLinkedProjects = useMemo(
@@ -215,7 +234,6 @@ function AttachmentUsagesComponent({ projectId }: { projectId: string }): JSX.El
     const [expandedState, setExpandedState] = useState<ExpandedState>({})
     const [releaseFilter, setReleaseFilter] = useState<string>('')
     const [searchTerm, setSearchTerm] = useState<string>('')
-    const session = useSession()
     const filteredData = useMemo(
         () => (releaseFilter || searchTerm ? filterRows(data, releaseFilter, searchTerm, saveUsagesPayload) : data),
         [
@@ -226,41 +244,40 @@ function AttachmentUsagesComponent({ projectId }: { projectId: string }): JSX.El
         ],
     )
 
-    useEffect(() => {
-        if (session.status === 'unauthenticated') {
-            void signOut()
-        }
-    }, [
-        session,
-    ])
-
     const handleSaveUsages = async () => {
         try {
             setSaveUsagesLoading(true)
-            const session = await getSession()
-            if (CommonUtils.isNullOrUndefined(session)) {
-                MessageService.error(t('Something went wrong'))
-                return signOut()
-            }
-            const response = await ApiUtils.POST(
-                `projects/${projectId}/saveAttachmentUsages`,
-                saveUsagesPayload,
-                session.user.access_token,
-            )
+            const response = await ApiUtils.POST(`projects/${projectId}/saveAttachmentUsages`, saveUsagesPayload)
             if (response.status !== StatusCodes.CREATED) {
                 MessageService.error(t('Something went wrong'))
                 return notFound()
             }
-            MessageService.success(t('AttachmentUsages saved successfully'))
+
+            // Check for warnings in response (e.g. stale sub-project or release references)
+            try {
+                const responseBody = await response.json()
+                if (responseBody.warnings && responseBody.warnings.length > 0) {
+                    responseBody.warnings.forEach((warning: string) => {
+                        MessageService.warn(warning, {
+                            autoClose: false,
+                        })
+                    })
+                    MessageService.success(t('AttachmentUsages saved successfully (with warnings)'))
+                } else {
+                    MessageService.success(t('AttachmentUsages saved successfully'))
+                }
+            } catch {
+                // Response was plain text (no warnings)
+                MessageService.success(t('AttachmentUsages saved successfully'))
+            }
         } catch (e) {
-            console.error(e)
+            ApiUtils.reportError(e)
         } finally {
             setSaveUsagesLoading(false)
         }
     }
 
     useEffect(() => {
-        if (session.status !== 'authenticated') return
         const controller = new AbortController()
         const signal = controller.signal
 
@@ -271,25 +288,19 @@ function AttachmentUsagesComponent({ projectId }: { projectId: string }): JSX.El
 
         void (async () => {
             try {
-                const response = await ApiUtils.GET(
-                    `projects/${projectId}/linkedProjects?transitive=true`,
-                    session.data.user.access_token,
-                    signal,
-                )
+                const response = await ApiUtils.GET(`projects/${projectId}/linkedProjects?transitive=true`, signal)
 
                 if (response.status !== StatusCodes.OK) {
                     const err = (await response.json()) as ErrorDetails
-                    throw new Error(err.message)
+                    throw new ApiError(err.message, {
+                        status: response.status,
+                    })
                 }
 
                 const linkedProjectsData = (await response.json()) as LinkedProjects
                 setLinkedProjects(linkedProjectsData['_embedded']['sw360:projects'])
             } catch (error) {
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                    return
-                }
-                const message = error instanceof Error ? error.message : String(error)
-                throw new Error(message)
+                ApiUtils.reportError(error)
             } finally {
                 clearTimeout(timeout)
                 setShowProcessingLinkedProjects(false)
@@ -299,11 +310,9 @@ function AttachmentUsagesComponent({ projectId }: { projectId: string }): JSX.El
         return () => controller.abort()
     }, [
         projectId,
-        session,
     ])
 
     useEffect(() => {
-        if (session.status !== 'authenticated') return
         const controller = new AbortController()
         const signal = controller.signal
 
@@ -314,15 +323,13 @@ function AttachmentUsagesComponent({ projectId }: { projectId: string }): JSX.El
 
         void (async () => {
             try {
-                const response = await ApiUtils.GET(
-                    `projects/${projectId}/attachmentUsage?transitive=true`,
-                    session.data.user.access_token,
-                    signal,
-                )
+                const response = await ApiUtils.GET(`projects/${projectId}/attachmentUsage?transitive=true`, signal)
 
                 if (response.status !== StatusCodes.OK) {
                     const err = (await response.json()) as ErrorDetails
-                    throw new Error(err.message)
+                    throw new ApiError(err.message, {
+                        status: response.status,
+                    })
                 }
 
                 const usages = (await response.json()) as AttachmentUsages
@@ -338,7 +345,7 @@ function AttachmentUsagesComponent({ projectId }: { projectId: string }): JSX.El
 
                 for (const r of usages['_embedded']['sw360:release']) {
                     for (const att of r.attachments ?? []) {
-                        const usage = usages['_embedded']['sw360:attachmentUsages'][0].filter(
+                        const usage = usages['_embedded']['sw360:attachmentUsages'].filter(
                             (elem: AttachmentUsage) => elem.attachmentContentId === att.attachmentContentId,
                         )
                         for (const u of usage) {
@@ -373,11 +380,7 @@ function AttachmentUsagesComponent({ projectId }: { projectId: string }): JSX.El
                 }
                 setSaveUsagesPayload(saveUsages)
             } catch (error) {
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                    return
-                }
-                const message = error instanceof Error ? error.message : String(error)
-                MessageService.error(message)
+                ApiUtils.reportError(error)
             } finally {
                 clearTimeout(timeout)
                 setShowProcessingAttachmentUsages(false)
@@ -387,7 +390,6 @@ function AttachmentUsagesComponent({ projectId }: { projectId: string }): JSX.El
         return () => controller.abort()
     }, [
         projectId,
-        session,
     ])
 
     const columns = useMemo<ColumnDef<ExtendedNestedRows<TypedAttachment | TypedRelease | TypedProject>>[]>(
@@ -403,7 +405,7 @@ function AttachmentUsagesComponent({ projectId }: { projectId: string }): JSX.El
                             }}
                         >
                             <span className='fw-bold'>
-                                {t('Linked Releases And Projects')}
+                                {t('Linked Releases and Projects')}
                                 {' ('}
                                 <button
                                     type='button'
@@ -590,7 +592,7 @@ function AttachmentUsagesComponent({ projectId }: { projectId: string }): JSX.El
                     },
                     {
                         id: 'uploadedBy',
-                        header: t('Uploaded By'),
+                        header: t('Uploaded by'),
                         cell: ({ row }) => {
                             if (row.original.node.type === 'attachment') {
                                 return <div className='text-center'>{row.original.node.entity.createdBy}</div>
@@ -630,7 +632,7 @@ function AttachmentUsagesComponent({ projectId }: { projectId: string }): JSX.El
                                                     <input
                                                         type='checkbox'
                                                         className='form-check-input'
-                                                        disabled={!isLicenseInfoEnabled(attachmentType)}
+                                                        disabled={!isLicenseInfoEnabled(attachmentType ?? '')}
                                                         checked={
                                                             saveUsagesPayload.selected.indexOf(
                                                                 `${
@@ -700,7 +702,7 @@ function AttachmentUsagesComponent({ projectId }: { projectId: string }): JSX.El
                                             <input
                                                 type='checkbox'
                                                 className='form-check-input'
-                                                disabled={!isSourceCodeBundleEnabled(attachmentType)}
+                                                disabled={!isSourceCodeBundleEnabled(attachmentType ?? '')}
                                                 checked={
                                                     saveUsagesPayload.selected.indexOf(
                                                         `${r._links?.self.href.split('/').at(-1) ?? ''}_sourcePackage_${attachmentContentId}`,
@@ -751,7 +753,7 @@ function AttachmentUsagesComponent({ projectId }: { projectId: string }): JSX.El
                                             <input
                                                 type='checkbox'
                                                 className='form-check-input'
-                                                disabled={!isSourceCodeBundleEnabled(attachmentType)}
+                                                disabled={!isSourceCodeBundleEnabled(attachmentType ?? '')}
                                                 checked={
                                                     saveUsagesPayload.selected.indexOf(
                                                         `${r._links?.self.href.split('/').at(-1) ?? ''}_manuallySet_${attachmentContentId}`,
@@ -936,7 +938,13 @@ function AttachmentUsagesComponent({ projectId }: { projectId: string }): JSX.El
     useEffect(() => {
         if (memoizedAttachmentUsages === undefined) return
 
-        buildTable(setData, memoizedAttachmentUsages, memoizedLinkedProjects)
+        setIsTableBuilding(true)
+        // Use requestAnimationFrame to allow the browser to paint the loading indicator
+        // before starting the expensive table build
+        requestAnimationFrame(() => {
+            buildTable(setData, memoizedAttachmentUsages, memoizedLinkedProjects)
+            setIsTableBuilding(false)
+        })
     }, [
         memoizedAttachmentUsages,
         memoizedLinkedProjects,
@@ -963,7 +971,9 @@ function AttachmentUsagesComponent({ projectId }: { projectId: string }): JSX.El
                 {table ? (
                     <SW360Table
                         table={table}
-                        showProcessing={showProcessingLinkedProjects || showProcessingAttachmentUsages}
+                        showProcessing={
+                            showProcessingLinkedProjects || showProcessingAttachmentUsages || isTableBuilding
+                        }
                     />
                 ) : (
                     <div className='col-12 mt-1 text-center'>

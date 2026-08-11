@@ -10,14 +10,16 @@
 'use client'
 
 import { StatusCodes } from 'http-status-codes'
-import { getSession, signOut, useSession } from 'next-auth/react'
+
 import { useTranslations } from 'next-intl'
 import { SelectUsersDialog, ShowInfoOnHover } from 'next-sw360'
-import { Dispatch, type JSX, SetStateAction, useCallback, useEffect, useState } from 'react'
+import { Dispatch, type JSX, SetStateAction, useCallback, useState } from 'react'
 import { Alert, Button, Col, Form, Modal, Row } from 'react-bootstrap'
 import { BsCheck2Square } from 'react-icons/bs'
+import DateField from '@/components/DateField'
 import { ClearingRequestDetails, CreateClearingRequestPayload } from '@/object-types'
-import { ApiUtils, CommonUtils } from '@/utils/index'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
+import { dispatchSessionExpiredEvent } from '@/utils/sessionExpiry.utils'
 
 interface Props {
     show: boolean
@@ -33,7 +35,6 @@ interface ClearingRequestDataMap {
 export default function CreateClearingRequestModal({ show, setShow, projectId, projectName }: Props): JSX.Element {
     const t = useTranslations('default')
     const [message, setMessage] = useState<JSX.Element>()
-    const [minDate, setMinDate] = useState('')
     const [variant, setVariant] = useState('success')
     const [reloadPage, setReloadPage] = useState(false)
     const [isDisabled, setIsDisabled] = useState(false)
@@ -48,28 +49,6 @@ export default function CreateClearingRequestModal({ show, setShow, projectId, p
         priority: 'LOW',
         requestingUserComment: '',
     })
-    const { status } = useSession()
-
-    useEffect(() => {
-        if (status === 'unauthenticated') {
-            signOut()
-        }
-    }, [
-        status,
-    ])
-
-    useEffect(() => {
-        const calculateMinDate = () => {
-            const currentDate = new Date()
-            if (!isCritical) {
-                currentDate.setDate(currentDate.getDate() + 21)
-            }
-            return currentDate.toISOString().split('T')[0]
-        }
-        setMinDate(calculateMinDate())
-    }, [
-        isCritical,
-    ])
 
     const updateClearingTeamData = (user: ClearingRequestDataMap) => {
         const userEmails = Object.keys(user)
@@ -81,7 +60,7 @@ export default function CreateClearingRequestModal({ show, setShow, projectId, p
     }
 
     const handleError = useCallback(() => {
-        displayMessage('danger', <>{t('Error when processing')}</>)
+        displayMessage('danger', <>{t('Error while processing')}</>)
         setReloadPage(true)
     }, [
         t,
@@ -95,13 +74,7 @@ export default function CreateClearingRequestModal({ show, setShow, projectId, p
 
     const createClearingRequest = async () => {
         try {
-            const session = await getSession()
-            if (CommonUtils.isNullOrUndefined(session)) return signOut()
-            const response = await ApiUtils.POST(
-                `projects/${projectId}/clearingRequest`,
-                createClearingRequestPayload,
-                session.user.access_token,
-            )
+            const response = await ApiUtils.POST(`projects/${projectId}/clearingRequest`, createClearingRequestPayload)
             const responseData = (await response.json()) as ClearingRequestDetails
             if (response.status == StatusCodes.CREATED) {
                 displayMessage(
@@ -123,9 +96,9 @@ export default function CreateClearingRequestModal({ show, setShow, projectId, p
                 displayMessage('danger', <>{t('Clearing request already present for project')}</>)
                 setIsDisabled(true)
             } else if (response.status == StatusCodes.UNAUTHORIZED) {
-                await signOut()
+                dispatchSessionExpiredEvent()
             } else {
-                displayMessage('danger', <>{t('Error when processing')}</>)
+                displayMessage('danger', <>{t('Error while processing')}</>)
             }
         } catch {
             handleError()
@@ -134,13 +107,12 @@ export default function CreateClearingRequestModal({ show, setShow, projectId, p
 
     const handleSubmit = () => {
         createClearingRequest().catch((err) => {
-            console.log(err)
+            ApiUtils.reportError(err)
         })
     }
 
     const handleCloseDialog = () => {
         setShow(!show)
-        setMinDate('')
         setIsCritical(false)
         setIsDisabled(false)
         setShowMessage(false)
@@ -309,30 +281,25 @@ export default function CreateClearingRequestModal({ show, setShow, projectId, p
                             </Col>
                             <Col md={6}>
                                 <Form.Group className='mb-2'>
-                                    <Form.Label
-                                        style={{
-                                            fontWeight: 'bold',
-                                        }}
-                                    >
-                                        {t('Preferred Clearing Date')} :
-                                        <span
-                                            className='text-red'
-                                            style={{
-                                                color: '#F7941E',
-                                            }}
-                                        >
-                                            *
-                                        </span>
-                                    </Form.Label>
-                                    <Form.Control
-                                        type='date'
+                                    <DateField
                                         id='createClearingRequest.requestedClearingDate'
                                         name='requestedClearingDate'
+                                        label={`${t('Preferred Clearing Date')} *`}
+                                        placeholder='YYYY-MM-DD'
                                         value={createClearingRequestPayload.requestedClearingDate ?? ''}
-                                        onChange={updateInputField}
-                                        disabled={isDisabled}
-                                        min={minDate}
-                                        required
+                                        onChange={(normalized) => {
+                                            setCreateClearingRequestPayload({
+                                                ...createClearingRequestPayload,
+                                                requestedClearingDate: normalized,
+                                            })
+                                        }}
+                                        minDate={(() => {
+                                            const date = new Date()
+                                            if (!isCritical) {
+                                                date.setDate(date.getDate() + 21)
+                                            }
+                                            return date
+                                        })()}
                                     />
                                     <div
                                         className='form-text'

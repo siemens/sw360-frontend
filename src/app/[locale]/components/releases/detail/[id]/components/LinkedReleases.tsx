@@ -14,14 +14,13 @@
 import { ColumnDef, ExpandedState, getCoreRowModel, getExpandedRowModel, useReactTable } from '@tanstack/react-table'
 import { StatusCodes } from 'http-status-codes'
 import Link from 'next/link'
-import { signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { ReactNode, useEffect, useMemo, useState } from 'react'
 import { Spinner } from 'react-bootstrap'
 import { PaddedCell, SW360Table } from '@/components/sw360'
 import { Embedded, ErrorDetails, NestedRows, ReleaseLink } from '@/object-types'
-import MessageService from '@/services/message.service'
-import { ApiUtils, CommonUtils } from '@/utils'
+import { ApiError, CommonUtils } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
 
 type EmbeddedReleaseLinks = Embedded<ReleaseLink, 'sw360:releaseLinks'>
 interface Props {
@@ -33,15 +32,6 @@ const Capitalize = (text: string) =>
 
 const LinkedReleases = ({ releaseId }: Props): ReactNode => {
     const t = useTranslations('default')
-    const session = useSession()
-
-    useEffect(() => {
-        if (session.status === 'unauthenticated') {
-            void signOut()
-        }
-    }, [
-        session,
-    ])
 
     const [data, setData] = useState<NestedRows<ReleaseLink>[]>(() => [])
     const [showProcessing, setShowProcessing] = useState(false)
@@ -65,7 +55,6 @@ const LinkedReleases = ({ releaseId }: Props): ReactNode => {
     }
 
     useEffect(() => {
-        if (session.status !== 'authenticated') return
         const controller = new AbortController()
         const signal = controller.signal
 
@@ -76,15 +65,13 @@ const LinkedReleases = ({ releaseId }: Props): ReactNode => {
 
         void (async () => {
             try {
-                const response = await ApiUtils.GET(
-                    `releases/${releaseId}/releases?transitive=true`,
-                    session.data.user.access_token,
-                    signal,
-                )
+                const response = await ApiUtils.GET(`releases/${releaseId}/releases?transitive=true`, signal)
 
                 if (response.status !== StatusCodes.OK) {
                     const err = (await response.json()) as ErrorDetails
-                    throw new Error(err.message)
+                    throw new ApiError(err.message, {
+                        status: response.status,
+                    })
                 }
 
                 const releaseData = (await response.json()) as EmbeddedReleaseLinks
@@ -99,11 +86,7 @@ const LinkedReleases = ({ releaseId }: Props): ReactNode => {
                 })
                 setData(convertedTreeData)
             } catch (error) {
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                    return
-                }
-                const message = error instanceof Error ? error.message : String(error)
-                MessageService.error(message)
+                ApiUtils.reportError(error)
             } finally {
                 clearTimeout(timeout)
                 setShowProcessing(false)
@@ -113,7 +96,6 @@ const LinkedReleases = ({ releaseId }: Props): ReactNode => {
         return () => controller.abort()
     }, [
         releaseId,
-        session,
     ])
 
     const columns = useMemo<ColumnDef<NestedRows<ReleaseLink>>[]>(

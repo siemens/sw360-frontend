@@ -9,12 +9,13 @@
 // SPDX-License-Identifier: EPL-2.0
 // License-Filename: LICENSE
 
+'use client'
+
 import { StatusCodes } from 'http-status-codes'
-import { signOut, useSession } from 'next-auth/react'
 import { type JSX, useEffect, useState } from 'react'
 import { DocumentTypes, ErrorDetails, Resources } from '@/object-types'
-import MessageService from '@/services/message.service'
-import { ApiUtils, CommonUtils } from '@/utils'
+import { ApiError, CommonUtils } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
 import ComponentsUsing from './ComponentsUsing'
 import ProjectsUsing from './ProjectsUsing'
 
@@ -26,48 +27,31 @@ interface Props {
 
 const ResourcesUsing = ({ documentId, documentType, documentName }: Props): JSX.Element => {
     const [resourcesUsing, setResourceUsing] = useState<Resources | undefined>(undefined)
-    const session = useSession()
-
-    useEffect(() => {
-        if (session.status === 'unauthenticated') {
-            void signOut()
-        }
-    }, [
-        session,
-    ])
 
     const [showProcessing, setShowProcessing] = useState(false)
 
     useEffect(() => {
-        if (session.status === 'loading') return
         const controller = new AbortController()
         const signal = controller.signal
 
         void (async () => {
             try {
                 setShowProcessing(true)
-                if (CommonUtils.isNullOrUndefined(session.data)) return signOut()
-                const response = await ApiUtils.GET(
-                    `${documentType}/usedBy/${documentId}`,
-                    session.data.user.access_token,
-                    signal,
-                )
+                const response = await ApiUtils.GET(`${documentType}/usedBy/${documentId}`, signal)
                 if (response.status === StatusCodes.NO_CONTENT) {
                     return
                 }
                 if (response.status !== StatusCodes.OK) {
                     const err = (await response.json()) as ErrorDetails
-                    throw new Error(err.message)
+                    throw new ApiError(err.message, {
+                        status: response.status,
+                    })
                 }
 
                 const data = (await response.json()) as Resources
                 setResourceUsing(data)
             } catch (error) {
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                    return
-                }
-                const message = error instanceof Error ? error.message : String(error)
-                MessageService.error(message)
+                ApiUtils.reportError(error)
             } finally {
                 setShowProcessing(false)
             }
@@ -77,7 +61,6 @@ const ResourcesUsing = ({ documentId, documentType, documentName }: Props): JSX.
     }, [
         documentId,
         documentType,
-        session,
     ])
 
     return (

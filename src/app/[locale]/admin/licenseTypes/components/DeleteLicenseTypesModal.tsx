@@ -10,13 +10,14 @@
 'use client'
 
 import { StatusCodes } from 'http-status-codes'
-import { getSession, signOut, useSession } from 'next-auth/react'
+
 import { useTranslations } from 'next-intl'
 import { type JSX, useCallback, useEffect, useState } from 'react'
 import { Button, Form, Modal, Spinner } from 'react-bootstrap'
 import { BsQuestionCircle } from 'react-icons/bs'
 import MessageService from '@/services/message.service'
-import { ApiUtils, CommonUtils } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
+import { dispatchSessionExpiredEvent } from '@/utils/sessionExpiry.utils'
 
 interface Props {
     licenseTypeId: string
@@ -35,20 +36,9 @@ export default function DeleteLicenseTypesModal({ licenseTypeId, licenseTypeName
     const [loading, setLoading] = useState<boolean>(false)
     const [licenseTypeInUse, setLicenseTypeInUse] = useState<boolean>(false)
     const [licenseTypeUsageCount, setLicenseTypeUsageCount] = useState<number | null>(null)
-    const { status } = useSession()
-
-    useEffect(() => {
-        if (status === 'unauthenticated') {
-            signOut()
-        }
-    }, [
-        status,
-    ])
 
     const fetchData = useCallback(async (url: string) => {
-        const session = await getSession()
-        if (CommonUtils.isNullOrUndefined(session)) return signOut()
-        const response = await ApiUtils.GET(url, session.user.access_token)
+        const response = await ApiUtils.GET(url)
         if (response.status === StatusCodes.OK) {
             const data = await response.json()
             return data
@@ -73,11 +63,7 @@ export default function DeleteLicenseTypesModal({ licenseTypeId, licenseTypeName
                 }
             })
             .catch((error) => {
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                    return
-                }
-                const message = error instanceof Error ? error.message : String(error)
-                MessageService.error(message)
+                ApiUtils.reportError(error)
             })
             .finally(() => {
                 setLoading(false)
@@ -89,21 +75,18 @@ export default function DeleteLicenseTypesModal({ licenseTypeId, licenseTypeName
 
     const handleDeleteLicenseType = async () => {
         try {
-            const session = await getSession()
-            if (CommonUtils.isNullOrUndefined(session)) return signOut()
-            const response = await ApiUtils.DELETE(`licenseTypes/${licenseTypeId}`, session.user.access_token)
+            const response = await ApiUtils.DELETE(`licenseTypes/${licenseTypeId}`)
             if (response.status === StatusCodes.OK) {
                 MessageService.success(t('Delete License Type successful'))
                 setShow(false)
                 window.location.reload()
             } else if (response.status === StatusCodes.UNAUTHORIZED) {
-                await signOut()
+                dispatchSessionExpiredEvent()
             } else {
-                MessageService.error(t('Error when processing'))
+                MessageService.error(t('Error while processing'))
             }
         } catch (error) {
-            const message = error instanceof Error ? error.message : String(error)
-            MessageService.error(message)
+            ApiUtils.reportError(error)
         }
     }
 
@@ -120,20 +103,9 @@ export default function DeleteLicenseTypesModal({ licenseTypeId, licenseTypeName
                 centered
                 size='lg'
             >
-                <Modal.Header
-                    style={{
-                        backgroundColor: '#FEEFEF',
-                        color: '#da1414',
-                        fontWeight: '700',
-                    }}
-                >
+                <Modal.Header className='alert-danger'>
                     <h5>
-                        <Modal.Title
-                            style={{
-                                fontSize: '1.25rem',
-                                fontWeight: '700',
-                            }}
-                        >
+                        <Modal.Title>
                             <BsQuestionCircle size={20} />
                             &nbsp;
                             {t('Delete License Type')}?
@@ -170,7 +142,6 @@ export default function DeleteLicenseTypesModal({ licenseTypeId, licenseTypeName
                 </Modal.Body>
                 <Modal.Footer className='justify-content-end'>
                     <Button
-                        className='delete-btn'
                         variant='light'
                         onClick={handleCloseDialog}
                     >

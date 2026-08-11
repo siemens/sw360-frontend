@@ -14,15 +14,14 @@
 import { ColumnDef, getCoreRowModel, useReactTable } from '@tanstack/react-table'
 import { StatusCodes } from 'http-status-codes'
 import { useRouter } from 'next/navigation'
-import { signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { PageButtonHeader, PageSizeSelector, QuickFilter, SW360Table, TableFooter } from 'next-sw360'
 import { ReactNode, useEffect, useMemo, useState } from 'react'
 import { OverlayTrigger, Spinner, Tooltip } from 'react-bootstrap'
 import { BsCheck2Square, BsClipboard, BsFillTrashFill, BsPencil } from 'react-icons/bs'
 import { Embedded, ErrorDetails, Obligation, PageableQueryParam, PaginationMeta } from '@/object-types'
-import MessageService from '@/services/message.service'
-import { ApiUtils, CommonUtils } from '@/utils'
+import { ApiError, CommonUtils } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
 import { ObligationLevelInfo, ObligationLevels } from '../../../../../object-types/Obligation'
 import DeleteObligationDialog from './DeleteObligationDialog'
 
@@ -32,18 +31,9 @@ function Obligations(): ReactNode {
     const t = useTranslations('default')
     const [search, setSearch] = useState({})
     const [obligationCount, setObligationCount] = useState(0)
-    const session = useSession()
     const [showDeleteDialog, setShowDeleteDialog] = useState(false)
     const [deletedObligationId, setDeletedObligationId] = useState('')
     const router = useRouter()
-
-    useEffect(() => {
-        if (session.status === 'unauthenticated') {
-            void signOut()
-        }
-    }, [
-        session,
-    ])
 
     const openDeleteDialog = (obligationId: string | undefined) => {
         if (obligationId !== undefined) {
@@ -206,7 +196,6 @@ function Obligations(): ReactNode {
     const [showProcessing, setShowProcessing] = useState(false)
 
     useEffect(() => {
-        if (session.status === 'loading') return
         const controller = new AbortController()
         const signal = controller.signal
 
@@ -217,7 +206,6 @@ function Obligations(): ReactNode {
 
         void (async () => {
             try {
-                if (CommonUtils.isNullOrUndefined(session.data)) return signOut()
                 const queryUrl = CommonUtils.createUrlWithParams(
                     `obligations`,
                     Object.fromEntries(
@@ -230,10 +218,12 @@ function Obligations(): ReactNode {
                         ]),
                     ),
                 )
-                const response = await ApiUtils.GET(queryUrl, session.data.user.access_token, signal)
+                const response = await ApiUtils.GET(queryUrl, signal)
                 if (response.status !== StatusCodes.OK) {
                     const err = (await response.json()) as ErrorDetails
-                    throw new Error(err.message)
+                    throw new ApiError(err.message, {
+                        status: response.status,
+                    })
                 }
 
                 const data = (await response.json()) as EmbeddedObligations
@@ -245,11 +235,7 @@ function Obligations(): ReactNode {
                         : data['_embedded']['sw360:obligations'],
                 )
             } catch (error) {
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                    return
-                }
-                const message = error instanceof Error ? error.message : String(error)
-                MessageService.error(message)
+                ApiUtils.reportError(error)
             } finally {
                 clearTimeout(timeout)
                 setShowProcessing(false)
@@ -259,7 +245,6 @@ function Obligations(): ReactNode {
         return () => controller.abort()
     }, [
         pageableQueryParam,
-        session,
         search,
     ])
 
@@ -304,7 +289,7 @@ function Obligations(): ReactNode {
         setPageableQueryParam({
             page: 0,
             page_entries: 10,
-            sort: '',
+            sort: Object.keys(search).length > 0 ? 'score,asc' : '',
         })
     }, [
         search,

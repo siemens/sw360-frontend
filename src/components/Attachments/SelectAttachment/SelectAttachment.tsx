@@ -11,22 +11,22 @@
 'use client'
 
 import { StatusCodes } from 'http-status-codes'
-import { getSession, signOut } from 'next-auth/react'
+
 import { useTranslations } from 'next-intl'
 import React, { type JSX, useRef, useState } from 'react'
 import { Button, Modal, Spinner } from 'react-bootstrap'
 
 import { Attachment, Embedded } from '@/object-types'
 import MessageService from '@/services/message.service'
-import { ApiUtils } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
 import CommonUtils from '@/utils/common.utils'
-import AttachmentRowData from '../AttachmentRowData'
+import { dispatchSessionExpiredEvent } from '@/utils/sessionExpiry.utils'
 
 interface Props {
     show: boolean
     setShow: React.Dispatch<React.SetStateAction<boolean>>
-    attachmentsData: Array<AttachmentRowData>
-    setAttachmentsData: React.Dispatch<React.SetStateAction<Array<AttachmentRowData>>>
+    attachmentsData: Array<Attachment>
+    setAttachmentsData: React.Dispatch<React.SetStateAction<Array<Attachment>>>
 }
 
 type EmbeddedAttachments = Embedded<Attachment, 'sw360:attachments'>
@@ -61,13 +61,10 @@ function SelectAttachment({ show, setShow, attachmentsData, setAttachmentsData }
         for (const iterator of files) {
             formData.append('files', iterator)
         }
-
-        const session = await getSession()
-        if (CommonUtils.isNullOrUndefined(session)) return signOut()
-        const uploadAttachmentResponse = await ApiUtils.POST('attachments', formData, session.user.access_token)
+        const uploadAttachmentResponse = await ApiUtils.POST('attachments', formData)
         if (uploadAttachmentResponse.status === StatusCodes.UNAUTHORIZED) {
             MessageService.error(t('Session has expired'))
-            return signOut()
+            return dispatchSessionExpiredEvent()
         }
 
         if (uploadAttachmentResponse.status !== StatusCodes.OK) {
@@ -90,7 +87,6 @@ function SelectAttachment({ show, setShow, attachmentsData, setAttachmentsData }
                 checkedTeam: '',
                 checkedBy: '',
                 checkedOn: '',
-                isAddedNew: true,
             })
         })
         setAttachmentsData([
@@ -108,6 +104,33 @@ function SelectAttachment({ show, setShow, attachmentsData, setAttachmentsData }
         setFiles(list)
     }
 
+    const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault()
+    }
+
+    const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault()
+        if (e.dataTransfer.items.length !== 0) {
+            if (e.dataTransfer.items[0].kind === 'file') {
+                const f = e.dataTransfer.items[0].getAsFile()
+                if (!CommonUtils.isNullOrUndefined(f))
+                    setFiles((prev) => [
+                        ...prev,
+                        f,
+                    ])
+            } else {
+                return
+            }
+        } else if (e.dataTransfer.files.length !== 0) {
+            setFiles((prev) => [
+                ...prev,
+                e.dataTransfer.files[0],
+            ])
+        } else {
+            return
+        }
+    }
+
     return (
         <Modal
             show={show}
@@ -120,14 +143,18 @@ function SelectAttachment({ show, setShow, attachmentsData, setAttachmentsData }
                 <Modal.Title>{t('Upload Attachment')}</Modal.Title>
             </Modal.Header>
             <Modal.Body>
-                <div className='attachment-modal-body-first'>
-                    <div className='attachment-modal-body-second'>
+                <div className='modal-body-bordered'>
+                    <div
+                        className='text-center'
+                        onDragOver={handleDragOver}
+                        onDrop={handleDrop}
+                    >
                         <span>{t('Drop a File Here')}</span>
                         <br />
                         {t('Or')}
                         <br />
                         <input
-                            className='attachment-input-hidden'
+                            className='d-none'
                             ref={inputRef}
                             type='file'
                             placeholder={t('Upload Attachment')}
@@ -135,7 +162,7 @@ function SelectAttachment({ show, setShow, attachmentsData, setAttachmentsData }
                             onChange={handleFileChange}
                         />
                         <button
-                            className='attachment-button-browse'
+                            className='btn btn-secondary'
                             onClick={handleButtonClick}
                         >
                             {t('Browse')}
@@ -146,27 +173,23 @@ function SelectAttachment({ show, setShow, attachmentsData, setAttachmentsData }
                 <br />
                 <div style={{}}>
                     {files.map((file, j) => (
-                        <>
-                            <div
-                                key={file.name}
-                                className='attachment-list-file'
-                            >
-                                <div className='attachment-filename'>
+                        <div key={file.name}>
+                            <div className='position-relative'>
+                                <div className='position-absolute bottom-0 start-0'>
                                     {file.name} ({file.size}b)
                                 </div>
-                                <div className='attachment-button-delete'>
-                                    <Button
-                                        variant='danger'
-                                        size='sm'
-                                        onClick={() => handleRemoveClick(j)}
-                                    >
-                                        Delete
-                                    </Button>
-                                </div>
+                                <Button
+                                    variant='danger'
+                                    size='sm'
+                                    onClick={() => handleRemoveClick(j)}
+                                    className='position-absolute bottom-0 end-0'
+                                >
+                                    Delete
+                                </Button>
                             </div>
                             <br />
                             <br />
-                        </>
+                        </div>
                     ))}
                 </div>
             </Modal.Body>

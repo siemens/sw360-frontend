@@ -237,17 +237,35 @@ const GeneralInfoComponent = ({ componentPayload, setComponentPayload, vendor, s
                                 htmlFor='tag'
                                 className='form-label fw-bold'
                             >
-                                {t('Homepage Url')}
+                                {t('Homepage URL')}
                             </label>
                             <input
                                 type='URL'
                                 className='form-control'
-                                placeholder={t('Will be set automatically')}
+                                placeholder={t('Enter Homepage URL')}
                                 id='tag'
                                 aria-describedby='Tag'
                                 name='homepage'
                                 onChange={updateField}
                                 value={componentPayload.homepage ?? ''}
+                            />
+                        </div>
+                        <div className='col-lg-4'>
+                            <label
+                                htmlFor='vcs_url'
+                                className='form-label fw-bold'
+                            >
+                                {t('VCS')}/{t('Repository URL')}
+                            </label>
+                            <input
+                                type='URL'
+                                className='form-control'
+                                placeholder={t('Enter VCS URL')}
+                                id='vcs_url'
+                                aria-describedby='vcs_url'
+                                name='vcs'
+                                onChange={updateField}
+                                value={componentPayload.vcs ?? ''}
                             />
                         </div>
                     </div>

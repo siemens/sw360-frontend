@@ -11,23 +11,23 @@
 
 'use client'
 
-import { ColumnDef, getCoreRowModel, getPaginationRowModel, useReactTable } from '@tanstack/react-table'
+import { ColumnDef, getCoreRowModel, SortingState, useReactTable } from '@tanstack/react-table'
 import { StatusCodes } from 'http-status-codes'
 import { StaticImport } from 'next/dist/shared/lib/get-img-props'
 import Image from 'next/image'
 import Link from 'next/link'
-import { signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
-import { ClientSidePageSizeSelector, ClientSideTableFooter, SW360Table } from 'next-sw360'
+import { PageSizeSelector, SW360Table, TableFooter } from 'next-sw360'
 import { ReactNode, useEffect, useMemo, useState } from 'react'
-import { OverlayTrigger, Spinner, Tooltip } from 'react-bootstrap'
+import { Button, Modal, OverlayTrigger, Tooltip } from 'react-bootstrap'
 import { BsClipboard, BsFillTrashFill, BsGit, BsLink45Deg, BsPencil } from 'react-icons/bs'
 import fossologyIcon from '@/assets/images/fossology.svg'
 import LinkReleaseToProjectModal from '@/components/LinkReleaseToProjectModal/LinkReleaseToProjectModal'
 import FossologyClearing from '@/components/sw360/FossologyClearing/FossologyClearing'
-import { Embedded, ErrorDetails, ReleaseLink, UserGroupType } from '@/object-types'
-import MessageService from '@/services/message.service'
-import { ApiUtils, CommonUtils } from '@/utils'
+import { Embedded, ErrorDetails, PageableQueryParam, PaginationMeta, ReleaseLink, UserGroupType } from '@/object-types'
+import { ApiError, CommonUtils } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
+import { getAuthenticatedUserIdentity } from '@/utils/api/authenticatedUser.util'
 import DeleteReleaseModal from './DeleteReleaseModal'
 
 type EmbeddedLinkedReleases = Embedded<ReleaseLink, 'sw360:releaseLinks'>
@@ -48,24 +48,45 @@ const ReleaseOverview = ({ componentId, calledFromModerationRequestDetail }: Pro
     const [fossologyClearingModelOpen, setFossologyClearingModelOpen] = useState(false)
     const [linkingReleaseId, setLinkingReleaseId] = useState<string | undefined>(undefined)
     const [linkToProjectModalOpen, setLinkToProjectModalOpen] = useState(false)
-    const session = useSession()
+    const [userIdentity, setUserIdentity] = useState<Awaited<ReturnType<typeof getAuthenticatedUserIdentity>> | null>(
+        null,
+    )
 
     useEffect(() => {
-        if (session.status === 'unauthenticated') {
-            void signOut()
-        }
-    }, [
-        session,
-    ])
+        void (async () => {
+            try {
+                setUserIdentity(await getAuthenticatedUserIdentity())
+            } catch {
+                setUserIdentity(null)
+            }
+        })()
+    }, [])
 
     const handleClickDelete = (releaseId: string) => {
         setDeletingRelease(releaseId)
         setDeleteModalOpen(true)
     }
 
-    const handleFossologyClearing = (releaseId: string) => {
-        setClearingReleaseId(releaseId)
-        setFossologyClearingModelOpen(true)
+    const [underClearingWarningOpen, setUnderClearingWarningOpen] = useState(false)
+    const [pendingFossologyReleaseId, setPendingFossologyReleaseId] = useState<string | undefined>(undefined)
+
+    const handleFossologyClearing = (releaseId: string, clearingState?: string) => {
+        if (clearingState === 'UNDER_CLEARING') {
+            setPendingFossologyReleaseId(releaseId)
+            setUnderClearingWarningOpen(true)
+        } else {
+            setClearingReleaseId(releaseId)
+            setFossologyClearingModelOpen(true)
+        }
+    }
+
+    const confirmFossologyClearing = () => {
+        setUnderClearingWarningOpen(false)
+        if (pendingFossologyReleaseId) {
+            setClearingReleaseId(pendingFossologyReleaseId)
+            setFossologyClearingModelOpen(true)
+            setPendingFossologyReleaseId(undefined)
+        }
     }
 
     const handleLinkToProject = (releaseId: string) => {
@@ -79,7 +100,7 @@ const ReleaseOverview = ({ componentId, calledFromModerationRequestDetail }: Pro
                 id: 'name',
                 header: t('Name'),
                 accessorKey: 'name',
-                enableSorting: false,
+                enableSorting: true,
                 cell: (info) => info.getValue(),
                 meta: {
                     width: '20%',
@@ -88,6 +109,8 @@ const ReleaseOverview = ({ componentId, calledFromModerationRequestDetail }: Pro
             {
                 id: 'version',
                 header: t('Version'),
+                accessorKey: 'version',
+                enableSorting: true,
                 cell: ({ row }) => {
                     const { version, id } = row.original
                     return (
@@ -106,7 +129,10 @@ const ReleaseOverview = ({ componentId, calledFromModerationRequestDetail }: Pro
             {
                 id: 'clearingState',
                 header: t('Clearing State'),
+                accessorKey: 'clearingState',
+                enableSorting: true,
                 cell: ({ row }) => <>{Capitalize(row.original.clearingState ?? '')}</>,
+
                 meta: {
                     width: '20%',
                 },
@@ -115,7 +141,7 @@ const ReleaseOverview = ({ componentId, calledFromModerationRequestDetail }: Pro
                 id: 'mainlineState',
                 header: t('Release Mainline State'),
                 accessorKey: 'mainlineState',
-                enableSorting: false,
+                enableSorting: true,
                 cell: ({ row }) => <>{Capitalize(row.original.mainlineState ?? '')}</>,
                 meta: {
                     width: '20%',
@@ -126,7 +152,7 @@ const ReleaseOverview = ({ componentId, calledFromModerationRequestDetail }: Pro
                 header: t('Actions'),
                 enableSorting: false,
                 cell: ({ row }) => {
-                    const { id } = row.original
+                    const { id, clearingState } = row.original
                     return (
                         <span className='d-flex justify-content-evenly'>
                             <Image
@@ -137,7 +163,7 @@ const ReleaseOverview = ({ componentId, calledFromModerationRequestDetail }: Pro
                                     marginRight: '5px',
                                 }}
                                 alt='Fossology'
-                                onClick={() => handleFossologyClearing(id)}
+                                onClick={() => handleFossologyClearing(id, clearingState)}
                             />
                             <OverlayTrigger overlay={<Tooltip>{t('Edit')}</Tooltip>}>
                                 <Link href={`/components/editRelease/${id}`}>
@@ -148,10 +174,12 @@ const ReleaseOverview = ({ componentId, calledFromModerationRequestDetail }: Pro
                                 </Link>
                             </OverlayTrigger>
                             <OverlayTrigger overlay={<Tooltip>{t('Duplicate')}</Tooltip>}>
-                                <BsClipboard
-                                    className='btn-icon'
-                                    size={20}
-                                />
+                                <Link href={`/components/edit/${componentId}/release/add?duplicate=${id}`}>
+                                    <BsClipboard
+                                        className='btn-icon'
+                                        size={20}
+                                    />
+                                </Link>
                             </OverlayTrigger>
                             <OverlayTrigger overlay={<Tooltip>{t('Link Project')}</Tooltip>}>
                                 <BsLink45Deg
@@ -161,10 +189,12 @@ const ReleaseOverview = ({ componentId, calledFromModerationRequestDetail }: Pro
                                 />
                             </OverlayTrigger>
                             <OverlayTrigger overlay={<Tooltip>{t('Merge')}</Tooltip>}>
-                                <BsGit
-                                    size={20}
-                                    className='btn-icon'
-                                />
+                                <Link href={`/components/releases/detail/${id}/merge`}>
+                                    <BsGit
+                                        size={20}
+                                        className='btn-icon'
+                                    />
+                                </Link>
                             </OverlayTrigger>
                             <OverlayTrigger overlay={<Tooltip>{t('Delete')}</Tooltip>}>
                                 <span className='d-inline-block'>
@@ -188,6 +218,17 @@ const ReleaseOverview = ({ componentId, calledFromModerationRequestDetail }: Pro
         ],
     )
 
+    const [pageableQueryParam, setPageableQueryParam] = useState<PageableQueryParam>({
+        page: 0,
+        page_entries: 10,
+        sort: 'version,asc',
+    })
+    const [paginationMeta, setPaginationMeta] = useState<PaginationMeta | undefined>({
+        size: 0,
+        totalElements: 0,
+        totalPages: 0,
+        number: 0,
+    })
     const [releaseData, setReleaseData] = useState<ReleaseLink[]>(() => [])
     const memoizedData = useMemo(
         () => releaseData,
@@ -198,7 +239,6 @@ const ReleaseOverview = ({ componentId, calledFromModerationRequestDetail }: Pro
     const [showProcessing, setShowProcessing] = useState(false)
 
     useEffect(() => {
-        if (session.status === 'loading') return
         const controller = new AbortController()
         const signal = controller.signal
 
@@ -209,29 +249,40 @@ const ReleaseOverview = ({ componentId, calledFromModerationRequestDetail }: Pro
 
         void (async () => {
             try {
-                if (CommonUtils.isNullOrUndefined(session.data)) return signOut()
-                const response = await ApiUtils.GET(
+                const queryUrl = CommonUtils.createUrlWithParams(
                     `components/${componentId}/releases`,
-                    session.data.user.access_token,
-                    signal,
+                    Object.fromEntries(
+                        Object.entries(pageableQueryParam).map(([key, value]) => [
+                            key,
+                            String(value),
+                        ]),
+                    ),
                 )
+                const response = await ApiUtils.GET(queryUrl, signal)
                 if (response.status !== StatusCodes.OK) {
                     const err = (await response.json()) as ErrorDetails
-                    throw new Error(err.message)
+                    throw new ApiError(err.message, {
+                        status: response.status,
+                    })
                 }
 
-                const data = (await response.json()) as EmbeddedLinkedReleases
-                setReleaseData(
-                    CommonUtils.isNullOrUndefined(data['_embedded']['sw360:releaseLinks'])
-                        ? []
-                        : data['_embedded']['sw360:releaseLinks'],
-                )
-            } catch (error) {
-                if (error instanceof DOMException && error.name === 'AbortError') {
+                const responseText = await response.text()
+                if (CommonUtils.isNullEmptyOrUndefinedString(responseText)) {
+                    setReleaseData([])
+                    setPaginationMeta({
+                        size: 0,
+                        totalElements: 0,
+                        totalPages: 0,
+                        number: 0,
+                    })
                     return
                 }
-                const message = error instanceof Error ? error.message : String(error)
-                MessageService.error(message)
+
+                const data = JSON.parse(responseText) as EmbeddedLinkedReleases
+                setPaginationMeta(data.page)
+                setReleaseData(data['_embedded']?.['sw360:releaseLinks'] ?? [])
+            } catch (error) {
+                ApiUtils.reportError(error)
             } finally {
                 clearTimeout(timeout)
                 setShowProcessing(false)
@@ -240,8 +291,8 @@ const ReleaseOverview = ({ componentId, calledFromModerationRequestDetail }: Pro
 
         return () => controller.abort()
     }, [
-        session,
         componentId,
+        pageableQueryParam,
     ])
 
     const table = useReactTable({
@@ -253,14 +304,68 @@ const ReleaseOverview = ({ componentId, calledFromModerationRequestDetail }: Pro
         state: {
             columnVisibility: {
                 actions:
-                    !(session?.data?.user?.userGroup === UserGroupType.SECURITY_USER) ||
+                    !(userIdentity?.userGroup === UserGroupType.SECURITY_USER) ||
                     calledFromModerationRequestDetail === undefined ||
                     calledFromModerationRequestDetail === false,
             },
+            pagination: {
+                pageIndex: pageableQueryParam.page,
+                pageSize: pageableQueryParam.page_entries,
+            },
+            sorting: pageableQueryParam.sort
+                ? [
+                      {
+                          id: pageableQueryParam.sort.split(',')[0],
+                          desc: pageableQueryParam.sort.split(',')[1] === 'desc',
+                      },
+                  ]
+                : [],
         },
 
-        // client side pagination
-        getPaginationRowModel: getPaginationRowModel(),
+        // server side sorting config
+        manualSorting: true,
+        onSortingChange: (updater) => {
+            setPageableQueryParam((prev) => {
+                const prevSorting: SortingState = prev.sort
+                    ? [
+                          {
+                              id: prev.sort.split(',')[0],
+                              desc: prev.sort.split(',')[1] === 'desc',
+                          },
+                      ]
+                    : []
+                const nextSorting = typeof updater === 'function' ? updater(prevSorting) : updater
+                if (nextSorting.length > 0) {
+                    const { id, desc } = nextSorting[0]
+                    return {
+                        ...prev,
+                        sort: `${id},${desc ? 'desc' : 'asc'}`,
+                    }
+                }
+                return {
+                    ...prev,
+                    sort: '',
+                }
+            })
+        },
+
+        // server side pagination config
+        manualPagination: true,
+        pageCount: paginationMeta?.totalPages ?? 1,
+        onPaginationChange: (updater) => {
+            const next =
+                typeof updater === 'function'
+                    ? updater({
+                          pageIndex: pageableQueryParam.page,
+                          pageSize: pageableQueryParam.page_entries,
+                      })
+                    : updater
+            setPageableQueryParam((prev) => ({
+                ...prev,
+                page: next.pageIndex + 1,
+                page_entries: next.pageSize,
+            }))
+        },
 
         meta: {
             rowHeightConstant: true,
@@ -270,19 +375,21 @@ const ReleaseOverview = ({ componentId, calledFromModerationRequestDetail }: Pro
     return (
         <>
             <div className='mb-3'>
-                {table ? (
-                    <>
-                        <ClientSidePageSizeSelector table={table} />
-                        <SW360Table
-                            table={table}
-                            showProcessing={showProcessing}
-                        />
-                        <ClientSideTableFooter table={table} />
-                    </>
-                ) : (
-                    <div className='col-12 mt-1 text-center'>
-                        <Spinner className='spinner' />
-                    </div>
+                <PageSizeSelector
+                    pageableQueryParam={pageableQueryParam}
+                    setPageableQueryParam={setPageableQueryParam}
+                    totalElements={paginationMeta?.totalElements}
+                />
+                <SW360Table
+                    table={table}
+                    showProcessing={showProcessing}
+                />
+                {paginationMeta && (
+                    <TableFooter
+                        pageableQueryParam={pageableQueryParam}
+                        setPageableQueryParam={setPageableQueryParam}
+                        paginationMeta={paginationMeta}
+                    />
                 )}
             </div>
             <DeleteReleaseModal
@@ -304,6 +411,37 @@ const ReleaseOverview = ({ componentId, calledFromModerationRequestDetail }: Pro
                     releaseId={linkingReleaseId}
                 />
             )}
+            <Modal
+                show={underClearingWarningOpen}
+                onHide={() => setUnderClearingWarningOpen(false)}
+                centered
+            >
+                <Modal.Header closeButton>
+                    <Modal.Title>{t('Release Under Clearing')}</Modal.Title>
+                </Modal.Header>
+                <Modal.Body>
+                    <p>
+                        {t('The clearing state of this release is currently')} <b>{t('UNDER_CLEARING')}</b>
+                        {', '}
+                        {t('which means someone is already working on it')}.{' '}
+                        {t('Do you still want to trigger the FOSSology process')}?
+                    </p>
+                </Modal.Body>
+                <Modal.Footer>
+                    <Button
+                        variant='secondary'
+                        onClick={() => setUnderClearingWarningOpen(false)}
+                    >
+                        {t('Cancel')}
+                    </Button>
+                    <Button
+                        variant='primary'
+                        onClick={confirmFossologyClearing}
+                    >
+                        {t('Proceed')}
+                    </Button>
+                </Modal.Footer>
+            </Modal>
         </>
     )
 }

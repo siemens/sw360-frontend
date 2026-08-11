@@ -10,15 +10,15 @@
 'use client'
 
 import { StatusCodes } from 'http-status-codes'
-import { signOut, useSession } from 'next-auth/react'
+import { useSearchParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { Dispatch, ReactNode, SetStateAction, useEffect, useReducer, useState } from 'react'
 import { OverlayTrigger, Tooltip } from 'react-bootstrap'
 import { BsInfoCircle } from 'react-icons/bs'
 import icons from '@/assets/icons/icons.svg'
 import { Embedded, ErrorDetails, PageableQueryParam, PaginationMeta, SearchResult } from '@/object-types'
-import MessageService from '@/services/message.service'
-import { ApiUtils, CommonUtils } from '@/utils'
+import { ApiError, CommonUtils } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
 
 interface SEARCH_STATE {
     project: boolean
@@ -159,13 +159,17 @@ function KeywordSearch({
     setShowProcessing,
     setPaginationMeta,
     pageableQueryParam,
+    setPageableQueryParam,
 }: {
     setData: Dispatch<SetStateAction<SearchResult[]>>
     setShowProcessing: Dispatch<SetStateAction<boolean>>
     setPaginationMeta: Dispatch<SetStateAction<PaginationMeta | undefined>>
     pageableQueryParam: PageableQueryParam
+    setPageableQueryParam: Dispatch<SetStateAction<PageableQueryParam>>
 }): ReactNode {
     const t = useTranslations('default')
+    const searchParams = useSearchParams()
+    const querySearchText = searchParams.get('searchText')?.trim() ?? ''
 
     const initialState: SEARCH_STATE = {
         project: false,
@@ -180,15 +184,20 @@ function KeywordSearch({
     }
 
     const [searchOptions, dispatch] = useReducer(reducer, initialState)
-    const [searchText, setSearchText] = useState('')
-    const session = useSession()
+    const [searchText, setSearchText] = useState(querySearchText)
 
     useEffect(() => {
-        if (session.status === 'unauthenticated') {
-            void signOut()
+        if (querySearchText === searchText) {
+            return
         }
+
+        setSearchText(querySearchText)
+        setPageableQueryParam((prev) => ({
+            ...prev,
+            page: 0,
+        }))
     }, [
-        session,
+        querySearchText,
     ])
 
     function appendTypeMasksToParams(searchOptions: SEARCH_STATE, params = new URLSearchParams()) {
@@ -208,8 +217,6 @@ function KeywordSearch({
         }, 300)
 
         try {
-            if (session.status !== 'authenticated') return
-
             const params = appendTypeMasksToParams(
                 searchOptions,
                 new URLSearchParams({
@@ -222,10 +229,12 @@ function KeywordSearch({
 
             const queryUrl = `search?${params.toString()}`
 
-            const response = await ApiUtils.GET(queryUrl, session.data.user.access_token)
+            const response = await ApiUtils.GET(queryUrl)
             if (response.status !== StatusCodes.OK && response.status !== StatusCodes.NO_CONTENT) {
                 const err = (await response.json()) as ErrorDetails
-                throw new Error(err.message)
+                throw new ApiError(err.message, {
+                    status: response.status,
+                })
             }
 
             const data = (await response.json()) as EmbeddedSearchResults
@@ -234,16 +243,20 @@ function KeywordSearch({
                 setPaginationMeta(data.page)
             }
         } catch (error) {
-            if (error instanceof DOMException && error.name === 'AbortError') {
-                return
-            }
-            const message = error instanceof Error ? error.message : String(error)
-            MessageService.error(message)
+            ApiUtils.reportError(error)
         } finally {
             clearTimeout(timeout)
             setShowProcessing(false)
         }
     }
+
+    useEffect(() => {
+        if (searchText.trim() !== '') {
+            handleSearch()
+        }
+    }, [
+        pageableQueryParam,
+    ])
 
     return (
         <>
@@ -431,7 +444,7 @@ function KeywordSearch({
                                 >
                                     <use href={`${icons.src}#oblig`}></use>
                                 </svg>{' '}
-                                {'Obligations'}
+                                {t('Obligations')}
                             </label>
                         </div>
                         <div className='form-check mt-1'>
@@ -457,7 +470,7 @@ function KeywordSearch({
                                 >
                                     <use href={`${icons.src}#user`}></use>
                                 </svg>{' '}
-                                {'Users'}
+                                {t('Users')}
                             </label>
                         </div>
                         <div className='form-check mt-1'>
@@ -483,7 +496,7 @@ function KeywordSearch({
                                 >
                                     <use href={`${icons.src}#vendor`}></use>
                                 </svg>{' '}
-                                {'Vendors'}
+                                {t('Vendors')}
                             </label>
                         </div>
                         <div className='form-check mt-1'>
@@ -502,7 +515,7 @@ function KeywordSearch({
                                 className='form-check-label fw-medium'
                                 htmlFor='keyboard-check-entire-document'
                             >
-                                {'Entire Document'}
+                                {t('Entire Document')}
                             </label>
                         </div>
                         <div className='row mt-2'>
@@ -520,7 +533,7 @@ function KeywordSearch({
                                         })
                                     }
                                 >
-                                    {'Toggle'}
+                                    {t('Toggle')}
                                 </button>
                                 <button
                                     type='button'
@@ -531,7 +544,7 @@ function KeywordSearch({
                                         })
                                     }
                                 >
-                                    {'Deselect All'}
+                                    {t('Deselect All')}
                                 </button>
                             </div>
                         </div>
@@ -539,7 +552,12 @@ function KeywordSearch({
                             <button
                                 type='button'
                                 className='btn btn-sm btn-primary'
-                                onClick={() => void handleSearch()}
+                                onClick={() =>
+                                    setPageableQueryParam({
+                                        ...pageableQueryParam,
+                                        page: 0,
+                                    })
+                                }
                             >
                                 {t('Search')}
                             </button>

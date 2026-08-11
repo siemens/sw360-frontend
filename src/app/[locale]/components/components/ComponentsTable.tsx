@@ -15,7 +15,6 @@ import { ColumnDef, getCoreRowModel, getSortedRowModel, SortingState, useReactTa
 import { StatusCodes } from 'http-status-codes'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { PageSizeSelector, SW360Table, TableFooter } from 'next-sw360'
 import React, { ReactNode, useEffect, useMemo, useState } from 'react'
@@ -23,7 +22,9 @@ import { OverlayTrigger, Spinner, Tooltip } from 'react-bootstrap'
 import { BsFillTrashFill, BsPencil } from 'react-icons/bs'
 import { Component, Embedded, ErrorDetails, PageableQueryParam, PaginationMeta, UserGroupType } from '@/object-types'
 import MessageService from '@/services/message.service'
-import { ApiUtils, CommonUtils } from '@/utils'
+import { ApiError, CommonUtils } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
+import { getAuthenticatedUserIdentity } from '@/utils/api/authenticatedUser.util'
 import DeleteComponentDialog from './DeleteComponentDialog'
 
 interface Props {
@@ -37,16 +38,20 @@ export default function ComponentsTable({ setNumberOfComponent }: Props) {
     const params = useSearchParams()
     const [deletingComponent, setDeletingComponent] = useState<string>('')
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-    const session = useSession()
     const router = useRouter()
+    const [userIdentity, setUserIdentity] = useState<Awaited<ReturnType<typeof getAuthenticatedUserIdentity>> | null>(
+        null,
+    )
 
     useEffect(() => {
-        if (session.status === 'unauthenticated') {
-            void signOut()
-        }
-    }, [
-        session,
-    ])
+        void (async () => {
+            try {
+                setUserIdentity(await getAuthenticatedUserIdentity())
+            } catch {
+                setUserIdentity(null)
+            }
+        })()
+    }, [])
 
     const handleClickDelete = (componentId: string) => {
         setDeletingComponent(componentId)
@@ -63,8 +68,20 @@ export default function ComponentsTable({ setNumberOfComponent }: Props) {
             {
                 id: 'vendor',
                 header: t('Vendor'),
-                accessorKey: 'vendor',
-                cell: (info) => info.getValue(),
+                // Render vendor from `defaultVendor` (preferred) or fall back to embedded `sw360:vendors`.
+                // Prefer `fullName` first, then `shortName`, then id.
+                cell: ({ row }) => {
+                    const defVendor = row.original.defaultVendor
+                    const embeddedVendor = row.original._embedded?.['sw360:vendors']?.[0]
+                    const name =
+                        defVendor?.fullName?.trim() ||
+                        defVendor?.shortName ||
+                        embeddedVendor?.fullName?.trim() ||
+                        embeddedVendor?.shortName ||
+                        row.original.defaultVendorId ||
+                        ''
+                    return <>{name}</>
+                },
                 enableSorting: true,
                 meta: {
                     width: '20%',
@@ -92,7 +109,7 @@ export default function ComponentsTable({ setNumberOfComponent }: Props) {
             },
             {
                 id: 'mainLicenses',
-                header: t('Main licenses'),
+                header: t('Main Licenses'),
                 cell: ({ row }) => {
                     return (
                         <>
@@ -174,7 +191,7 @@ export default function ComponentsTable({ setNumberOfComponent }: Props) {
     const [pageableQueryParam, setPageableQueryParam] = useState<PageableQueryParam>({
         page: 0,
         page_entries: 10,
-        sort: 'name,asc',
+        sort: params.toString() ? 'score,asc' : 'name,asc',
     })
     const [paginationMeta, setPaginationMeta] = useState<PaginationMeta | undefined>({
         size: 0,
@@ -192,7 +209,6 @@ export default function ComponentsTable({ setNumberOfComponent }: Props) {
     const [showProcessing, setShowProcessing] = useState(false)
 
     useEffect(() => {
-        if (session.status === 'loading') return
         const controller = new AbortController()
         const signal = controller.signal
 
@@ -203,7 +219,6 @@ export default function ComponentsTable({ setNumberOfComponent }: Props) {
 
         void (async () => {
             try {
-                if (CommonUtils.isNullOrUndefined(session.data)) return signOut()
                 const searchParams = Object.fromEntries(params.entries())
                 const queryUrl = CommonUtils.createUrlWithParams(
                     `components`,
@@ -217,10 +232,12 @@ export default function ComponentsTable({ setNumberOfComponent }: Props) {
                         ]),
                     ),
                 )
-                const response = await ApiUtils.GET(queryUrl, session.data.user.access_token, signal)
+                const response = await ApiUtils.GET(queryUrl, signal)
                 if (response.status !== StatusCodes.OK) {
                     const err = (await response.json()) as ErrorDetails
-                    throw new Error(err.message)
+                    throw new ApiError(err.message, {
+                        status: response.status,
+                    })
                 }
 
                 const data = (await response.json()) as EmbeddedComponents
@@ -232,11 +249,7 @@ export default function ComponentsTable({ setNumberOfComponent }: Props) {
                         : data['_embedded']['sw360:components'],
                 )
             } catch (error) {
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                    return
-                }
-                const message = error instanceof Error ? error.message : String(error)
-                MessageService.error(message)
+                ApiUtils.reportError(error)
             } finally {
                 clearTimeout(timeout)
                 setShowProcessing(false)
@@ -247,14 +260,13 @@ export default function ComponentsTable({ setNumberOfComponent }: Props) {
     }, [
         pageableQueryParam,
         params.toString(),
-        session,
     ])
 
     useEffect(() => {
         setPageableQueryParam({
             page: 0,
             page_entries: 10,
-            sort: '',
+            sort: params.toString() ? 'score,asc' : '',
         })
     }, [
         params.toString(),
@@ -268,7 +280,7 @@ export default function ComponentsTable({ setNumberOfComponent }: Props) {
         // table state config
         state: {
             columnVisibility: {
-                actions: !(session?.data?.user?.userGroup === UserGroupType.SECURITY_USER),
+                actions: !(userIdentity?.userGroup === UserGroupType.SECURITY_USER),
             },
             pagination: {
                 pageIndex: pageableQueryParam.page,

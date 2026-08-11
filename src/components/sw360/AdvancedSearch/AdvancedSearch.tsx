@@ -10,7 +10,7 @@
 
 'use client'
 
-import { useRouter, useSearchParams } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { ShowInfoOnHover } from 'next-sw360'
 import React, { type JSX, useEffect, useState } from 'react'
@@ -29,26 +29,32 @@ interface Field {
     paramName: string
     enableAutocomplete?: boolean
     autocompleteSuggestions?: string[]
+    infoHoverText?: string
 }
 
 interface Props {
     title: string
     fields?: Array<Field>
-    enableExactMatch?: boolean
 }
 
 interface SearchParams {
     [k: string]: string
 }
 
-function AdvancedSearch({ title = 'Advanced Search', fields, enableExactMatch = true }: Props): JSX.Element {
+function AdvancedSearch({ title = 'Advanced Search', fields }: Props): JSX.Element {
     const router = useRouter()
+    const pathname = usePathname()
     const t = useTranslations('default')
     const params = Object.fromEntries(useSearchParams())
-    const [searchParams, setSearchParam] = useState<SearchParams>(params)
+    const [searchParams, setSearchParam] = useState<SearchParams>({
+        ...params,
+        luceneSearch: params.luceneSearch || 'true',
+    })
     const [createdOnSearchOption, setCreatedOnSearchOption] = useState('')
-    const [isUsersPage, setIsUsersPage] = useState(false)
-    const [isPackagesPage, setIsPackagesPage] = useState(false)
+    const [isMounted, setIsMounted] = useState(false)
+
+    const isUsersPage = pathname.includes('users')
+    const isPackagesPage = pathname.includes('packages')
 
     const handleSearchParam = (event: React.ChangeEvent<HTMLInputElement & HTMLSelectElement>) => {
         setSearchParam((prev: SearchParams) => ({
@@ -58,29 +64,110 @@ function AdvancedSearch({ title = 'Advanced Search', fields, enableExactMatch = 
     }
 
     const changeCreatedOnSearchOption = (event: React.ChangeEvent<HTMLSelectElement>) => {
-        setCreatedOnSearchOption(event.target.value)
+        const selectedOption = event.target.value
+        setCreatedOnSearchOption(selectedOption)
+
+        setSearchParam((prev: SearchParams) => ({
+            ...prev,
+            createdOn: selectedOption === 'BETWEEN' ? '' : (prev.createdOn ?? ''),
+            createdOnStart: selectedOption === 'BETWEEN' ? (prev.createdOnStart ?? '') : '',
+            createdOnEnd: selectedOption === 'BETWEEN' ? (prev.createdOnEnd ?? '') : '',
+        }))
     }
 
     useEffect(() => {
-        const currentUrl = new URL(window.location.href)
-        setIsUsersPage(currentUrl.pathname.includes('users'))
+        setIsMounted(true)
     }, [])
 
-    useEffect(() => {
-        const currentUrl = new URL(window.location.href)
-        setIsPackagesPage(currentUrl.pathname.includes('packages'))
-    }, [])
+    if (!isMounted) {
+        return <></>
+    }
 
     const submitSearch = () => {
         const currentUrl = new URL(window.location.href)
         const searchUrl = new URL(currentUrl.origin + currentUrl.pathname)
-        Object.entries(searchParams).forEach(([key, value]: Array<string>) => {
-            if (!CommonUtils.isNullEmptyOrUndefinedString(value)) {
-                searchUrl.searchParams.append(key, value)
+
+        const normalizeCreatedOnOption = (
+            option: string,
+        ): 'EQUAL' | 'LESS_THAN_OR_EQUAL_TO' | 'GREATER_THAN_OR_EQUAL_TO' | 'BETWEEN' | '' => {
+            switch (option) {
+                case 'EQUAL':
+                case 'equalTo':
+                    return 'EQUAL'
+                case 'LESS_THAN_OR_EQUAL_TO':
+                case 'lessThanEqualTo':
+                    return 'LESS_THAN_OR_EQUAL_TO'
+                case 'GREATER_THAN_OR_EQUAL_TO':
+                case 'greaterThanEqualTo':
+                    return 'GREATER_THAN_OR_EQUAL_TO'
+                case 'BETWEEN':
+                    return 'BETWEEN'
+                default:
+                    return ''
             }
+        }
+
+        const normalizedCreatedOnOption = normalizeCreatedOnOption(createdOnSearchOption)
+        const maxDate = '9999-01-01'
+        const singleDate = searchParams.createdOn
+        const startDate = searchParams.createdOnStart
+        const endDate = searchParams.createdOnEnd
+
+        let createdOnQueryValue = ''
+        if (normalizedCreatedOnOption === 'EQUAL' && !CommonUtils.isNullEmptyOrUndefinedString(singleDate)) {
+            createdOnQueryValue = singleDate
+        }
+        if (
+            normalizedCreatedOnOption === 'LESS_THAN_OR_EQUAL_TO' &&
+            !CommonUtils.isNullEmptyOrUndefinedString(singleDate)
+        ) {
+            createdOnQueryValue = `[1970-01-01 TO ${singleDate}]`
+        }
+        if (
+            normalizedCreatedOnOption === 'GREATER_THAN_OR_EQUAL_TO' &&
+            !CommonUtils.isNullEmptyOrUndefinedString(singleDate)
+        ) {
+            createdOnQueryValue = `[${singleDate} TO ${maxDate}]`
+        }
+        if (
+            normalizedCreatedOnOption === 'BETWEEN' &&
+            !CommonUtils.isNullEmptyOrUndefinedString(startDate) &&
+            !CommonUtils.isNullEmptyOrUndefinedString(endDate)
+        ) {
+            createdOnQueryValue = `[${startDate} TO ${endDate}]`
+        }
+
+        const effectiveParams = Object.entries(searchParams).filter(([key, value]: Array<string>) => {
+            if (CommonUtils.isNullEmptyOrUndefinedString(value)) {
+                return false
+            }
+
+            // createdOn payload is assembled separately from selected mode and date fields.
+            if (key === 'createdOn' || key === 'createdOnStart' || key === 'createdOnEnd') {
+                return false
+            }
+
+            return true
         })
-        const encodedUrl = encodeURI(searchUrl.toString().replace(/%40/g, '@'))
-        router.push(encodedUrl)
+
+        if (!CommonUtils.isNullEmptyOrUndefinedString(createdOnQueryValue)) {
+            effectiveParams.push([
+                'createdOn',
+                createdOnQueryValue,
+            ])
+        }
+
+        const hasSearchFilter = effectiveParams.some(([key]) => key !== 'luceneSearch')
+
+        effectiveParams.forEach(([key, value]: Array<string>) => {
+            // luceneSearch is only meaningful when at least one actual filter is present.
+            if (key === 'luceneSearch' && !hasSearchFilter) {
+                return
+            }
+            searchUrl.searchParams.append(key, value)
+        })
+
+        router.push(searchUrl.toString())
     }
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -90,6 +177,13 @@ function AdvancedSearch({ title = 'Advanced Search', fields, enableExactMatch = 
 
     const renderField = (field: Field) => {
         const fieldLabel = field.fieldName
+        const fieldLabelWithInfo = (
+            <span className='d-inline-flex align-items-center gap-1'>
+                <span>{fieldLabel}</span>
+                {field.infoHoverText && <ShowInfoOnHover text={field.infoHoverText} />}
+            </span>
+        )
+
         switch (field.paramName) {
             case 'createdOn':
                 if (Array.isArray(field.value)) {
@@ -99,14 +193,14 @@ function AdvancedSearch({ title = 'Advanced Search', fields, enableExactMatch = 
                                 className='mb-3'
                                 controlId={field.paramName}
                             >
-                                <Form.Label className='label'>{fieldLabel}</Form.Label>
+                                <Form.Label className='label'>{fieldLabelWithInfo}</Form.Label>
                                 <Form.Select
                                     aria-label={field.fieldName}
                                     className='form-control'
                                     size='sm'
                                     name={field.paramName}
                                     onChange={changeCreatedOnSearchOption}
-                                    value={searchParams.type}
+                                    value={createdOnSearchOption}
                                 >
                                     <option value='' />
                                     {field.value.map((option) => (
@@ -125,8 +219,8 @@ function AdvancedSearch({ title = 'Advanced Search', fields, enableExactMatch = 
                                     <Form.Control
                                         type='date'
                                         size='sm'
-                                        name='createdOnDate'
-                                        value={searchParams.createdOnDate}
+                                        name='createdOn'
+                                        value={searchParams.createdOn}
                                         onChange={handleSearchParam}
                                         max={new Date().toISOString().split('T')[0]}
                                     />
@@ -171,7 +265,7 @@ function AdvancedSearch({ title = 'Advanced Search', fields, enableExactMatch = 
                             className='mb-3'
                             controlId={field.paramName}
                         >
-                            <Form.Label className='label'>{fieldLabel}</Form.Label>
+                            <Form.Label className='label'>{fieldLabelWithInfo}</Form.Label>
                             {typeof field.enableAutocomplete !== 'undefined' &&
                             field.enableAutocomplete &&
                             field.autocompleteSuggestions ? (
@@ -211,7 +305,7 @@ function AdvancedSearch({ title = 'Advanced Search', fields, enableExactMatch = 
                             className='mb-3'
                             controlId={field.paramName}
                         >
-                            <Form.Label className='label'>{fieldLabel}</Form.Label>
+                            <Form.Label className='label'>{fieldLabelWithInfo}</Form.Label>
                             <Form.Select
                                 className='form-control'
                                 size='sm'
@@ -248,38 +342,31 @@ function AdvancedSearch({ title = 'Advanced Search', fields, enableExactMatch = 
                 <div className='card-body'>
                     <Form onSubmit={handleSubmit}>
                         {fields?.map((field) => renderField(field))}
-
-                        {enableExactMatch && (
-                            <Form.Group
-                                className='mb-3'
-                                hidden={isUsersPage}
-                            >
-                                <Form.Check
-                                    type='checkbox'
-                                    label={t('Exact Match')}
-                                    id='exactMatch'
-                                    checked={searchParams.exactMatch === 'true'}
-                                    onChange={(e) => {
-                                        setSearchParam((prev) => ({
-                                            ...prev,
-                                            exactMatch: e.target.checked ? 'true' : '',
-                                        }))
-                                    }}
-                                    style={{
-                                        fontWeight: 'bold',
-                                        fontSize: '14px',
-                                        display: 'inline-block',
-                                        marginRight: '5px',
-                                    }}
-                                />
-                                <ShowInfoOnHover text={t('Exact_Match_Info')} />
-                            </Form.Group>
-                        )}
+                        <Form.Group
+                            className='mb-3'
+                            hidden={isUsersPage}
+                        >
+                            <Form.Check
+                                inline
+                                type='checkbox'
+                                label={t('Exact Match')}
+                                id='exactMatch'
+                                checked={searchParams.luceneSearch === 'false'}
+                                onChange={(e) => {
+                                    setSearchParam((prev) => ({
+                                        ...prev,
+                                        luceneSearch: e.target.checked ? 'false' : 'true',
+                                    }))
+                                }}
+                            />
+                            <ShowInfoOnHover text={t('Exact_Match_Info')} />
+                        </Form.Group>
                         <Form.Group
                             className='mb-3'
                             hidden={!isPackagesPage}
                         >
                             <Form.Check
+                                inline
                                 type='checkbox'
                                 label={t('Orphan Package')}
                                 id='orphanPackage'
@@ -290,12 +377,6 @@ function AdvancedSearch({ title = 'Advanced Search', fields, enableExactMatch = 
                                         orphanPackage: e.target.checked ? 'true' : '',
                                     }))
                                 }
-                                style={{
-                                    fontWeight: 'bold',
-                                    fontSize: '14px',
-                                    display: 'inline-block',
-                                    marginRight: '5px',
-                                }}
                             />
                             <ShowInfoOnHover text={t('Orphan package info')} />
                         </Form.Group>

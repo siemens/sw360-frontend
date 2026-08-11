@@ -9,14 +9,12 @@
 
 'use client'
 
-import { getSession, signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
-import { Dispatch, ReactNode, SetStateAction, useEffect, useState } from 'react'
+import { Dispatch, ReactNode, SetStateAction, useState } from 'react'
 import { Alert, Form, Modal, Spinner } from 'react-bootstrap'
 import { BsQuestionCircle } from 'react-icons/bs'
 import DownloadService from '@/services/download.service'
-import MessageService from '@/services/message.service'
-import CommonUtils from '@/utils/common.utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
 
 interface Props {
     show: boolean
@@ -46,15 +44,6 @@ export default function ExportProjectSbomModal({
     const [disableExportSbom, setDisableExportSbom] = useState<boolean>(true)
     const [exportTime, setExportTime] = useState<number | null>(null)
     const [downloadState, setDownloadState] = useState<DownloadState>(DownloadState.INIT)
-    const { status } = useSession()
-
-    useEffect(() => {
-        if (status === 'unauthenticated') {
-            signOut()
-        }
-    }, [
-        status,
-    ])
 
     const updateInputField = (event: React.ChangeEvent<HTMLSelectElement | HTMLInputElement>) => {
         const { name, value, type } = event.target
@@ -72,15 +61,10 @@ export default function ExportProjectSbomModal({
             const start = Date.now()
             setLoading(true)
             setDisableExportSbom(true)
-            const session = await getSession()
-            if (CommonUtils.isNullOrUndefined(session)) {
-                return signOut()
-            }
             const currentDate = new Date().toISOString().split('T')[0]
             const downloadStatusCode = await DownloadService.download(
                 `reports?module=sbom&projectId=${projectId}&withSubProject=${includeSubProjectReleases}
                  &bomType=${sbomFormat}`,
-                session,
                 `Project-${currentDate}_SBOM.${sbomFormat.toLowerCase()}`,
             )
             if (downloadStatusCode !== undefined && downloadStatusCode === 200) {
@@ -89,11 +73,7 @@ export default function ExportProjectSbomModal({
             const endTime = Date.now()
             setExportTime(parseFloat(((endTime - start) / 1000).toFixed(2)))
         } catch (error: unknown) {
-            if (error instanceof DOMException && error.name === 'AbortError') {
-                return
-            }
-            const message = error instanceof Error ? error.message : String(error)
-            MessageService.error(message)
+            ApiUtils.reportError(error)
         } finally {
             setLoading(false)
         }

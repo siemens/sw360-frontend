@@ -29,8 +29,8 @@ function SW360Error({ error, reset }: { error: Error; reset: () => void }): JSX.
                     alt='SW360 Logo'
                     className='my-4'
                 />
-                <h1 className='mb-0 fw-bold'>{t('Internal Server Error')}</h1>
-                <p className='lead my-3'>{error.message}</p>
+                <h1 className='mb-0 fw-bold'>{t('Internal server error')}</h1>
+                <p className='lead my-3'>{error.message || t('Something went wrong')}</p>
                 <div className='d-flex justify-content-center gap-3'>
                     <button
                         onClick={() => reset()}

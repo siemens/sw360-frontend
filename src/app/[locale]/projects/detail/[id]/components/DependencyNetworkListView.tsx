@@ -20,15 +20,14 @@ import {
 } from '@tanstack/react-table'
 import { StatusCodes } from 'http-status-codes'
 import Link from 'next/link'
-import { signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { ClientSidePageSizeSelector, ClientSideTableFooter, FilterComponent, SW360Table, TableSearch } from 'next-sw360'
 import React, { useEffect, useMemo, useState } from 'react'
 import { OverlayTrigger, Spinner, Tooltip } from 'react-bootstrap'
 import { BsPencil } from 'react-icons/bs'
 import { ErrorDetails, FilterOption } from '@/object-types'
-import MessageService from '@/services/message.service'
-import { ApiUtils, CommonUtils } from '@/utils'
+import { ApiError, CommonUtils } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
 import ClearingStateBadge from './ClearingStateBadge'
 
 interface ListViewData {
@@ -171,29 +170,19 @@ const upperCaseWithUnderscore = (text: string | undefined) => {
 
 const DependencyNetworkListView = ({ projectId }: { projectId: string }) => {
     const t = useTranslations('default')
-    const session = useSession()
-
-    useEffect(() => {
-        if (session.status === 'unauthenticated') {
-            void signOut()
-        }
-    }, [
-        session,
-    ])
 
     const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
     const [showFilter, setShowFilter] = useState<undefined | string>()
 
-    const [showProcessing, setShowProcessing] = useState(false)
+    // Track loading state for API call and data readiness separately
+    const [isLoading, setIsLoading] = useState(true)
+    const [isDataReady, setIsDataReady] = useState(false)
+
+    // Show processing until API call completes AND data is ready to render
+    const showProcessing = isLoading || !isDataReady
 
     const [listViewData, setListViewData] = useState<ListViewData[]>([])
     const [rowData, setRowData] = useState<ListViewData[]>([])
-    const memoizedRowData = useMemo(
-        () => rowData,
-        [
-            rowData,
-        ],
-    )
     const [search, setSearch] = useState<{
         search: string
     }>({
@@ -417,10 +406,15 @@ const DependencyNetworkListView = ({ projectId }: { projectId: string }) => {
             return true
         })
         setRowData(data)
+        // Mark data as ready only after setting row data
+        if (listViewData.length > 0 || !isLoading) {
+            setIsDataReady(true)
+        }
     }, [
         search,
         columnFilters,
         listViewData,
+        isLoading,
     ])
 
     const table = useReactTable({
@@ -446,41 +440,34 @@ const DependencyNetworkListView = ({ projectId }: { projectId: string }) => {
     })
 
     useEffect(() => {
-        if (session.status !== 'authenticated') return
         const controller = new AbortController()
         const signal = controller.signal
 
-        const timeLimit = memoizedRowData.length === 0 ? 700 : 0
-        const timeout = setTimeout(() => {
-            setShowProcessing(true)
-        }, timeLimit)
+        // Reset loading states when starting new fetch
+        setIsLoading(true)
+        setIsDataReady(false)
 
         void (async () => {
             try {
-                const listViewResponse = await ApiUtils.GET(
-                    `projects/network/${projectId}/listView`,
-                    session.data.user.access_token,
-                    signal,
-                )
+                const listViewResponse = await ApiUtils.GET(`projects/network/${projectId}/listView`, signal)
 
                 if (listViewResponse.status !== StatusCodes.OK) {
                     const err = (await listViewResponse.json()) as ErrorDetails
-                    throw new Error(err.message)
+                    throw new ApiError(err.message, {
+                        status: listViewResponse.status,
+                    })
                 }
 
                 const listViewData = (await listViewResponse.json()) as Array<ListViewData>
                 setListViewData(listViewData)
             } catch (error) {
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                    return
-                }
-                const message = error instanceof Error ? error.message : String(error)
-                MessageService.error(message)
+                ApiUtils.reportError(error)
             } finally {
-                clearTimeout(timeout)
-                setShowProcessing(false)
+                setIsLoading(false)
             }
         })()
+
+        return () => controller.abort()
     }, [
         projectId,
     ])

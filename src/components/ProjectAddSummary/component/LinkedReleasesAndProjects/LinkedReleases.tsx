@@ -12,18 +12,22 @@
 import { ColumnDef, getCoreRowModel, useReactTable } from '@tanstack/react-table'
 import { useTranslations } from 'next-intl'
 import { type JSX, useCallback, useEffect, useMemo, useState } from 'react'
-import { Spinner } from 'react-bootstrap'
 import { FaTrashAlt } from 'react-icons/fa'
 import { SW360Table } from '@/components/sw360'
-import LinkedReleasesModal from '@/components/sw360/LinkedReleasesModal/LinkedReleasesModal'
-import { LinkedReleaseData, ProjectPayload } from '@/object-types'
+import SearchReleasesModal from '@/components/sw360/SearchReleasesModal'
+import { LinkedReleaseData, ProjectPayload, ReleaseDetail } from '@/object-types'
 
 interface Props {
     projectPayload: ProjectPayload
     setProjectPayload: React.Dispatch<React.SetStateAction<ProjectPayload>>
+    isReleaseLoading?: boolean
 }
 
-export default function LinkedReleases({ projectPayload, setProjectPayload }: Props): JSX.Element {
+export default function LinkedReleases({
+    projectPayload,
+    setProjectPayload,
+    isReleaseLoading = false,
+}: Props): JSX.Element {
     const t = useTranslations('default')
     const [showLinkedReleasesModal, setShowLinkedReleasesModal] = useState(false)
     const [tableData, setTableData] = useState<
@@ -117,6 +121,34 @@ export default function LinkedReleases({ projectPayload, setProjectPayload }: Pr
         ],
     )
 
+    const handleSelectReleases = useCallback(
+        (selectedReleases: ReleaseDetail[]) => {
+            const newLinkedReleases: Record<string, LinkedReleaseData> = {}
+            selectedReleases.forEach((release) => {
+                if (release.id) {
+                    newLinkedReleases[release.id] = {
+                        name: release.name ?? '',
+                        version: release.version ?? '',
+                        mainlineState: release.mainlineState ?? '',
+                        releaseRelation: 'UNKNOWN',
+                        comment: '',
+                    }
+                }
+            })
+
+            setProjectPayload((prev) => ({
+                ...prev,
+                linkedReleases: {
+                    ...prev.linkedReleases,
+                    ...newLinkedReleases,
+                },
+            }))
+        },
+        [
+            setProjectPayload,
+        ],
+    )
+
     useEffect(() => {
         const data = Object.entries(projectPayload.linkedReleases ?? {})
         setTableData(data)
@@ -166,7 +198,7 @@ export default function LinkedReleases({ projectPayload, setProjectPayload }: Pr
                             <option value='INTERNAL_USE'>{t('Internal use')}</option>
                             <option value='OPTIONAL'>{t('Optional')}</option>
                             <option value='TO_BE_REPLACED'>{t('To be replaced')}</option>
-                            <option value='CODE_SNIPPET'>{t('Code snippet')}</option>
+                            <option value='CODE_SNIPPET'>{t('Code Snippet')}</option>
                         </select>
                     </div>
                 ),
@@ -247,11 +279,10 @@ export default function LinkedReleases({ projectPayload, setProjectPayload }: Pr
 
     return (
         <>
-            <LinkedReleasesModal
-                projectPayload={projectPayload}
-                setProjectPayload={setProjectPayload}
+            <SearchReleasesModal
                 show={showLinkedReleasesModal}
                 setShow={setShowLinkedReleasesModal}
+                onSelect={handleSelectReleases}
             />
             <div className='row mb-4'>
                 <div className='row header-1'>
@@ -273,16 +304,10 @@ export default function LinkedReleases({ projectPayload, setProjectPayload }: Pr
                     </h6>
                 </div>
                 <div className='mb-3'>
-                    {table ? (
-                        <SW360Table
-                            table={table}
-                            showProcessing={false}
-                        />
-                    ) : (
-                        <div className='col-12 mt-1 text-center'>
-                            <Spinner className='spinner' />
-                        </div>
-                    )}
+                    <SW360Table
+                        table={table}
+                        showProcessing={isReleaseLoading}
+                    />
                 </div>
                 <div
                     className='row'

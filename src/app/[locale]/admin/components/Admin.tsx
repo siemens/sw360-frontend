@@ -9,9 +9,8 @@
 
 'use client'
 import Link from 'next/link'
-import { signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
-import { type JSX, useEffect } from 'react'
+import { type JSX } from 'react'
 import { AiOutlineTags, AiOutlineUnorderedList } from 'react-icons/ai'
 import { BsBag, BsFileEarmarkText, BsFilter, BsSearch } from 'react-icons/bs'
 import { FiEdit2 } from 'react-icons/fi'
@@ -24,15 +23,6 @@ import icons from '@/assets/icons/icons.svg'
 
 const AdminMainPage = (): JSX.Element => {
     const t = useTranslations('default')
-    const { status } = useSession()
-
-    useEffect(() => {
-        if (status === 'unauthenticated') {
-            signOut()
-        }
-    }, [
-        status,
-    ])
 
     return (
         <>
@@ -42,10 +32,7 @@ const AdminMainPage = (): JSX.Element => {
                     <Link href='/admin/users'>
                         <button
                             type='button'
-                            className='btn btn-secondary mb-2 mx-2'
-                            style={{
-                                width: '210px',
-                            }}
+                            className='btn btn-secondary mb-2 mx-2 admin-button'
                         >
                             <ImUsers /> {t('User')}
                         </button>
@@ -53,10 +40,7 @@ const AdminMainPage = (): JSX.Element => {
                     <Link href='/admin/departments'>
                         <button
                             type='button'
-                            className='btn btn-secondary mb-2 mx-2'
-                            style={{
-                                width: '210px',
-                            }}
+                            className='btn btn-secondary mb-2 mx-2 admin-button'
                         >
                             <RiOrganizationChart /> {t('Department')}
                         </button>
@@ -64,10 +48,7 @@ const AdminMainPage = (): JSX.Element => {
                     <Link href='/admin/vendors'>
                         <button
                             type='button'
-                            className='btn btn-secondary mb-2 mx-2'
-                            style={{
-                                width: '210px',
-                            }}
+                            className='btn btn-secondary mb-2 mx-2 admin-button'
                         >
                             <BsBag /> {t('Vendors')}
                         </button>
@@ -75,10 +56,7 @@ const AdminMainPage = (): JSX.Element => {
                     <Link href='/admin/bulkreleaseedit'>
                         <button
                             type='button'
-                            className='btn btn-secondary mb-2 mx-2'
-                            style={{
-                                width: '210px',
-                            }}
+                            className='btn btn-secondary mb-2 mx-2 admin-button'
                         >
                             <FiEdit2 /> {t('Bulk Release Edit')}
                         </button>
@@ -86,10 +64,7 @@ const AdminMainPage = (): JSX.Element => {
                     <Link href='/admin/licenses'>
                         <button
                             type='button'
-                            className='btn btn-secondary mb-2 mx-2'
-                            style={{
-                                width: '210px',
-                            }}
+                            className='btn btn-secondary mb-2 mx-2 admin-button'
                         >
                             <BsFileEarmarkText /> {t('Licenses')}
                         </button>
@@ -97,10 +72,7 @@ const AdminMainPage = (): JSX.Element => {
                     <Link href='/admin/licenseTypes'>
                         <button
                             type='button'
-                            className='btn btn-secondary mb-2 mx-2'
-                            style={{
-                                width: '210px',
-                            }}
+                            className='btn btn-secondary mb-2 mx-2 admin-button'
                         >
                             <AiOutlineTags /> {t('License Types')}
                         </button>
@@ -108,10 +80,7 @@ const AdminMainPage = (): JSX.Element => {
                     <Link href='/admin/obligations'>
                         <button
                             type='button'
-                            className='btn btn-secondary mb-2 mx-2'
-                            style={{
-                                width: '210px',
-                            }}
+                            className='btn btn-secondary mb-2 mx-2 admin-button'
                         >
                             <AiOutlineUnorderedList /> {t('Obligations')}
                         </button>
@@ -119,10 +88,7 @@ const AdminMainPage = (): JSX.Element => {
                     <Link href='/admin/schedule'>
                         <button
                             type='button'
-                            className='btn btn-secondary mb-2 mx-2'
-                            style={{
-                                width: '210px',
-                            }}
+                            className='btn btn-secondary mb-2 mx-2 admin-button'
                         >
                             <RxCalendar /> {t('Schedule')}
                         </button>
@@ -130,10 +96,7 @@ const AdminMainPage = (): JSX.Element => {
                     <Link href='/admin/fossology'>
                         <button
                             type='button'
-                            className='btn btn-secondary mb-2 mx-2'
-                            style={{
-                                width: '210px',
-                            }}
+                            className='btn btn-secondary mb-2 mx-2 admin-button'
                         >
                             <svg
                                 className='fossology_icon mb-1'
@@ -148,10 +111,7 @@ const AdminMainPage = (): JSX.Element => {
                     <Link href='/admin/importexport'>
                         <button
                             type='button'
-                            className='btn btn-secondary mb-2 mx-2'
-                            style={{
-                                width: '210px',
-                            }}
+                            className='btn btn-secondary mb-2 mx-2 admin-button'
                         >
                             <RiArrowUpDownFill /> {t('Import Export')}
                         </button>
@@ -159,10 +119,7 @@ const AdminMainPage = (): JSX.Element => {
                     <Link href='/admin/databaseSanitation'>
                         <button
                             type='button'
-                            className='btn btn-secondary mb-2 mx-2'
-                            style={{
-                                width: '210px',
-                            }}
+                            className='btn btn-secondary mb-2 mx-2 admin-button'
                         >
                             <BsSearch /> {t('Database Sanitation')}
                         </button>
@@ -170,10 +127,7 @@ const AdminMainPage = (): JSX.Element => {
                     <Link href='#'>
                         <button
                             type='button'
-                            className='btn btn-secondary mb-2 mx-2'
-                            style={{
-                                width: '210px',
-                            }}
+                            className='btn btn-secondary mb-2 mx-2 admin-button'
                         >
                             <BsFilter /> {t('Attachment Cleanup')}
                         </button>
@@ -181,10 +135,7 @@ const AdminMainPage = (): JSX.Element => {
                     <Link href='/admin/oauthclient'>
                         <button
                             type='button'
-                            className='btn btn-secondary mb-2 mx-2'
-                            style={{
-                                width: '210px',
-                            }}
+                            className='btn btn-secondary mb-2 mx-2 admin-button'
                         >
                             <HiOutlineDocumentDuplicate /> {t('OAuth Client')}
                         </button>
@@ -192,10 +143,7 @@ const AdminMainPage = (): JSX.Element => {
                     <Link href='/admin/configurations'>
                         <button
                             type='button'
-                            className='btn btn-secondary mb-2 mx-2'
-                            style={{
-                                width: '210px',
-                            }}
+                            className='btn btn-secondary mb-2 mx-2 admin-button'
                         >
                             <GrConfigure /> {t('Configurations')}
                         </button>

@@ -21,7 +21,6 @@ import {
 } from '@tanstack/react-table'
 import { StatusCodes } from 'http-status-codes'
 import Link from 'next/link'
-import { useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { FilterComponent, PaddedCell, SW360Table, TableSearch } from 'next-sw360'
 import React, { useEffect, useMemo, useState } from 'react'
@@ -29,9 +28,9 @@ import { OverlayTrigger, Spinner, Tooltip } from 'react-bootstrap'
 import { BsPencil } from 'react-icons/bs'
 import ExpandableTextList from '@/components/ExpandableList/ExpandableTextLink'
 import { Attachment, ErrorDetails, FilterOption, NestedRows, TypedEntity } from '@/object-types'
-import MessageService from '@/services/message.service'
+import { ApiError } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
 import CommonUtils from '@/utils/common.utils'
-import { ApiUtils } from '@/utils/index'
 
 interface Props {
     projectId: string
@@ -198,12 +197,16 @@ type TypedRelease = TypedEntity<ReleaseClearingState, 'release'>
 const DependencyNetworkTreeView = ({ projectId }: Props) => {
     const t = useTranslations('default')
 
-    const session = useSession()
     const [expandLevel, setExpandLevel] = useState(-1)
     const [expandedState, setExpandedState] = useState<ExpandedState>({})
     const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
 
-    const [showProcessing, setShowProcessing] = useState(false)
+    // Track loading state for API call and data readiness separately
+    const [isLoading, setIsLoading] = useState(true)
+    const [isDataReady, setIsDataReady] = useState(false)
+
+    // Show processing until API call completes AND data is ready to render
+    const showProcessing = isLoading || !isDataReady
     const [showFilter, setShowFilter] = useState<undefined | string>()
 
     const [search, setSearch] = useState('')
@@ -548,37 +551,37 @@ const DependencyNetworkTreeView = ({ projectId }: Props) => {
     })
 
     useEffect(() => {
-        if (session.status !== 'authenticated') return
         const controller = new AbortController()
         const signal = controller.signal
 
-        setShowProcessing(true)
+        // Reset loading states when starting new fetch
+        setIsLoading(true)
+        setIsDataReady(false)
 
         void (async () => {
             try {
                 const response = await ApiUtils.GET(
                     `projects/network/${projectId}/linkedResources?transitive=true`,
-                    session.data.user.access_token,
                     signal,
                 )
 
                 if (response.status !== StatusCodes.OK) {
                     const err = (await response.json()) as ErrorDetails
-                    throw new Error(err.message)
+                    throw new ApiError(err.message, {
+                        status: response.status,
+                    })
                 }
 
                 const data = (await response.json()) as ProjectClearingState
                 setProjectClearingState(data)
             } catch (error) {
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                    return
-                }
-                const message = error instanceof Error ? error.message : String(error)
-                MessageService.error(message)
+                ApiUtils.reportError(error)
             } finally {
-                setShowProcessing(false)
+                setIsLoading(false)
             }
         })()
+
+        return () => controller.abort()
     }, [
         projectId,
     ])
@@ -656,6 +659,8 @@ const DependencyNetworkTreeView = ({ projectId }: Props) => {
         }
         tableData.push(root)
         setRowData(tableData)
+        // Mark data as ready only after setting row data
+        setIsDataReady(true)
     }, [
         projectClearingState,
         search,

@@ -9,11 +9,10 @@
 
 'use client'
 
-import { signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { Dispatch, ReactNode, SetStateAction, useEffect, useState } from 'react'
 import { BsArrowCounterclockwise, BsArrowLeft, BsCheck2 } from 'react-icons/bs'
-import { ListFieldProcessComponent, ReleaseDetail } from '@/object-types'
+import { ListFieldProcessComponent, Release, ReleaseDetail } from '@/object-types'
 
 export default function AdditionalDataSection({
     targetRelease,
@@ -23,20 +22,11 @@ export default function AdditionalDataSection({
 }: {
     targetRelease: ReleaseDetail | null
     sourceReleaseDetail: ReleaseDetail | null
-    finalReleasePayload: ReleaseDetail | null
-    setFinalReleasePayload: Dispatch<SetStateAction<null | ReleaseDetail>>
+    finalReleasePayload: Release | null
+    setFinalReleasePayload: Dispatch<SetStateAction<null | Release>>
 }): ReactNode {
     const t = useTranslations('default')
-    const session = useSession()
     const [additionalDataMergeList, setAdditionalDataMergeList] = useState<ListFieldProcessComponent[]>([])
-
-    useEffect(() => {
-        if (session.status === 'unauthenticated') {
-            signOut()
-        }
-    }, [
-        session,
-    ])
 
     useEffect(() => {
         setAdditionalDataMergeList([

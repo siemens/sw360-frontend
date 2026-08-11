@@ -9,24 +9,27 @@
 
 'use client'
 
-import { signOut, useSession } from 'next-auth/react'
+import { StatusCodes } from 'http-status-codes'
+
 import { useTranslations } from 'next-intl'
 import { ShowInfoOnHover } from 'next-sw360'
-import { Dispatch, ReactNode, SetStateAction, useCallback, useEffect, useState } from 'react'
+import { Dispatch, ReactNode, SetStateAction, useCallback, useState } from 'react'
 import { Alert, Button, Col, Form, Modal, Row } from 'react-bootstrap'
 import { BsQuestionCircle } from 'react-icons/bs'
+import DateField from '@/components/DateField'
 import { CreateClearingRequestPayload } from '@/object-types'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
+import { dispatchSessionExpiredEvent } from '@/utils/sessionExpiry.utils'
 
 interface Props {
     show: boolean
     setShow: Dispatch<SetStateAction<boolean>>
+    clearingRequestId: string
 }
 
-export default function ReopenClosedClearingRequestModal({ show, setShow }: Props): ReactNode {
+export default function ReopenClosedClearingRequestModal({ show, setShow, clearingRequestId }: Props): ReactNode {
     const t = useTranslations('default')
-    const { status } = useSession()
     const [message, setMessage] = useState('')
-    const [minDate, setMinDate] = useState('')
     const [variant, setVariant] = useState('success')
     const [isCritical, setIsCritical] = useState(false)
     const [reloadPage, setReloadPage] = useState(false)
@@ -37,35 +40,29 @@ export default function ReopenClosedClearingRequestModal({ show, setShow }: Prop
         clearingType: '',
         priority: 'LOW',
         requestingUserComment: '',
+        clearingState: 'NEW',
     })
 
-    useEffect(() => {
-        if (status === 'unauthenticated') {
-            signOut()
-        }
-    }, [
-        status,
-    ])
-
-    useEffect(() => {
-        const calculateMinDate = () => {
-            const currentDate = new Date()
-            if (!isCritical) {
-                currentDate.setDate(currentDate.getDate() + 21)
+    const handleError = useCallback(
+        async (response?: Response) => {
+            let errorMessage = t('Error while processing')
+            if (response) {
+                try {
+                    const data = (await response.json()) as {
+                        message?: string
+                    }
+                    if (data.message) errorMessage = data.message
+                } catch {
+                    errorMessage = t('Error while processing')
+                }
             }
-            return currentDate.toISOString().split('T')[0]
-        }
-        setMinDate(calculateMinDate())
-    }, [
-        isCritical,
-    ])
-
-    const handleError = useCallback(() => {
-        displayMessage('danger', t('Error when processing'))
-        setReloadPage(true)
-    }, [
-        t,
-    ])
+            displayMessage('danger', errorMessage)
+            setReloadPage(true)
+        },
+        [
+            t,
+        ],
+    )
 
     const displayMessage = (variant: string, message: string) => {
         setVariant(variant)
@@ -73,10 +70,27 @@ export default function ReopenClosedClearingRequestModal({ show, setShow }: Prop
         setShowMessage(true)
     }
 
-    const reopenClearingRequest = () => {
-        // Yet to implement
-        console.log('reopen closed CR')
-        handleError()
+    const reopenClearingRequest = async () => {
+        try {
+            const response = await ApiUtils.PATCH(
+                `clearingrequest/${clearingRequestId}`,
+                createClearingRequestPayload,
+                {
+                    Accept: 'application/json',
+                },
+            )
+            if (response.status == StatusCodes.OK) {
+                displayMessage('success', t('Clearing Request reopened successfully'))
+                setIsDisabled(true)
+                setReloadPage(true)
+            } else if (response.status == StatusCodes.UNAUTHORIZED) {
+                dispatchSessionExpiredEvent()
+            } else {
+                handleError(response)
+            }
+        } catch {
+            handleError()
+        }
     }
 
     const handleSubmit = () => {
@@ -85,7 +99,6 @@ export default function ReopenClosedClearingRequestModal({ show, setShow }: Prop
 
     const handleCloseDialog = () => {
         setShow(!show)
-        setMinDate('')
         setIsCritical(false)
         setIsDisabled(false)
         setShowMessage(false)
@@ -94,6 +107,7 @@ export default function ReopenClosedClearingRequestModal({ show, setShow }: Prop
             clearingType: '',
             priority: '',
             requestingUserComment: '',
+            clearingState: 'NEW',
         })
         if (reloadPage === true) {
             window.location.reload()
@@ -174,30 +188,25 @@ export default function ReopenClosedClearingRequestModal({ show, setShow }: Prop
                         <Row className='mb-3'>
                             <Col md={6}>
                                 <Form.Group className='mb-2'>
-                                    <Form.Label
-                                        style={{
-                                            fontWeight: 'bold',
-                                        }}
-                                    >
-                                        {t('Preferred Clearing Date')} :
-                                        <span
-                                            className='text-red'
-                                            style={{
-                                                color: '#F7941E',
-                                            }}
-                                        >
-                                            *
-                                        </span>
-                                    </Form.Label>
-                                    <Form.Control
-                                        type='date'
+                                    <DateField
                                         id='createClearingRequest.requestedClearingDate'
                                         name='requestedClearingDate'
+                                        label={`${t('Preferred Clearing Date')} *`}
+                                        placeholder='YYYY-MM-DD'
                                         value={createClearingRequestPayload.requestedClearingDate ?? ''}
-                                        onChange={updateInputField}
-                                        disabled={isDisabled}
-                                        min={minDate}
-                                        required
+                                        onChange={(normalized) => {
+                                            setCreateClearingRequestPayload({
+                                                ...createClearingRequestPayload,
+                                                requestedClearingDate: normalized,
+                                            })
+                                        }}
+                                        minDate={(() => {
+                                            const date = new Date()
+                                            if (!isCritical) {
+                                                date.setDate(date.getDate() + 21)
+                                            }
+                                            return date
+                                        })()}
                                     />
                                     <div
                                         className='form-text'
@@ -323,8 +332,9 @@ export default function ReopenClosedClearingRequestModal({ show, setShow }: Prop
                         className='login-btn'
                         variant='primary'
                         disabled={
-                            createClearingRequestPayload.clearingType !== undefined ||
-                            createClearingRequestPayload.requestedClearingDate !== undefined
+                            isDisabled ||
+                            !createClearingRequestPayload.clearingType ||
+                            !createClearingRequestPayload.requestedClearingDate
                         }
                         onClick={() => handleSubmit()}
                         hidden={reloadPage}

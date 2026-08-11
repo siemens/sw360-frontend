@@ -13,13 +13,14 @@
 
 import { StatusCodes } from 'http-status-codes'
 import { useRouter } from 'next/navigation'
-import { getSession, signOut, useSession } from 'next-auth/react'
+
 import { useTranslations } from 'next-intl'
 import { ChangeEvent, ReactNode, useCallback, useEffect, useState } from 'react'
 import { Alert, Button, Form, Modal } from 'react-bootstrap'
 import { ActionType, ReleaseDetail } from '@/object-types'
-import MessageService from '@/services/message.service'
-import { ApiUtils, CommonUtils } from '@/utils'
+import { CommonUtils } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
+import { dispatchSessionExpiredEvent } from '@/utils/sessionExpiry.utils'
 
 interface Props {
     componentId?: string
@@ -48,15 +49,6 @@ const DeleteReleaseModal = ({ componentId, actionType, releaseId, show, setShow 
     })
     const [comment, setComment] = useState('')
     const router = useRouter()
-    const { status } = useSession()
-
-    useEffect(() => {
-        if (status === 'unauthenticated') {
-            signOut()
-        }
-    }, [
-        status,
-    ])
 
     const displayMessage = (variant: string, message: string) => {
         setVariant(variant)
@@ -65,18 +57,16 @@ const DeleteReleaseModal = ({ componentId, actionType, releaseId, show, setShow 
     }
 
     const handleError = useCallback(() => {
-        displayMessage('danger', 'Error when processing!')
+        displayMessage('danger', t('Error while processing'))
         setReloadPage(true)
     }, [])
 
     const deleteComponent = async () => {
         if (CommonUtils.isNullEmptyOrUndefinedString(releaseId)) return
-        const session = await getSession()
-        if (CommonUtils.isNullOrUndefined(session)) return signOut()
         const url = CommonUtils.createUrlWithParams(`releases/${releaseId}`, {
             comment: comment,
         })
-        const response = await ApiUtils.DELETE(url, session.user.access_token)
+        const response = await ApiUtils.DELETE(url)
         try {
             if (response.status === StatusCodes.MULTI_STATUS) {
                 const body = (await response.json()) as Array<DeleteResponse>
@@ -92,7 +82,7 @@ const DeleteReleaseModal = ({ componentId, actionType, releaseId, show, setShow 
                 } else if (deleteStatus === StatusCodes.ACCEPTED) {
                     displayMessage('success', 'Created moderation request!')
                 } else {
-                    displayMessage('danger', 'Error when processing!')
+                    displayMessage('danger', t('Error while processing'))
                 }
             } else if (response.status === StatusCodes.UNAUTHORIZED) {
                 handleError()
@@ -107,9 +97,7 @@ const DeleteReleaseModal = ({ componentId, actionType, releaseId, show, setShow 
     const fetchData = useCallback(
         async (signal: AbortSignal) => {
             if (CommonUtils.isNullEmptyOrUndefinedString(releaseId)) return
-            const session = await getSession()
-            if (CommonUtils.isNullOrUndefined(session)) return signOut()
-            const releaseResponse = await ApiUtils.GET(`releases/${releaseId}`, session.user.access_token, signal)
+            const releaseResponse = await ApiUtils.GET(`releases/${releaseId}`, signal)
             if (releaseResponse.status === StatusCodes.OK) {
                 const release = (await releaseResponse.json()) as ReleaseDetail
                 setRelease(release)
@@ -123,7 +111,7 @@ const DeleteReleaseModal = ({ componentId, actionType, releaseId, show, setShow 
                         : 0,
                 })
             } else if (releaseResponse.status === StatusCodes.UNAUTHORIZED) {
-                await signOut()
+                dispatchSessionExpiredEvent()
             } else {
                 setRelease(undefined)
                 handleError()
@@ -154,11 +142,7 @@ const DeleteReleaseModal = ({ componentId, actionType, releaseId, show, setShow 
         const controller = new AbortController()
         const signal = controller.signal
         fetchData(signal).catch((error) => {
-            if (error instanceof DOMException && error.name === 'AbortError') {
-                return
-            }
-            const message = error instanceof Error ? error.message : String(error)
-            MessageService.error(message)
+            ApiUtils.reportError(error)
         })
 
         return () => {
@@ -257,7 +241,6 @@ const DeleteReleaseModal = ({ componentId, actionType, releaseId, show, setShow 
             </Modal.Body>
             <Modal.Footer className='justify-content-end'>
                 <Button
-                    className='delete-btn'
                     variant='light'
                     onClick={handleCloseDialog}
                 >

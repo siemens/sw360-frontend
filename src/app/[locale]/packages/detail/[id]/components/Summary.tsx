@@ -10,9 +10,8 @@
 'use client'
 
 import Link from 'next/link'
-import { signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
-import { ReactNode, useEffect, useState } from 'react'
+import { ReactNode, useState } from 'react'
 import { OverlayTrigger, Tooltip } from 'react-bootstrap'
 import { BsClipboard } from 'react-icons/bs'
 import { Package } from '@/object-types'
@@ -26,30 +25,37 @@ const Capitalize = (text: string) => {
 export default function Summary({ summaryData }: { summaryData: Package }): ReactNode {
     const t = useTranslations('default')
     const [toggleGeneralInformation, setToggleGeneralInformation] = useState(false)
-    const { status } = useSession()
-
-    useEffect(() => {
-        if (status === 'unauthenticated') {
-            signOut()
-        }
-    }, [
-        status,
-    ])
 
     const Clipboard = ({ text }: { text: string }) => {
+        const [copied, setCopied] = useState(false)
+
+        async function handleCopy() {
+            try {
+                await navigator.clipboard.writeText(text)
+                setCopied(true)
+            } catch (e) {
+                console.error(e)
+            }
+        }
         return (
-            <>
-                <OverlayTrigger overlay={<Tooltip>{t('Copy to Clipboard')}</Tooltip>}>
-                    <span className='d-inline-block'>
-                        <BsClipboard
-                            onClick={() => {
-                                navigator.clipboard.writeText(text).catch((e) => console.error(e))
-                            }}
-                            size={20}
-                        />
-                    </span>
-                </OverlayTrigger>
-            </>
+            <OverlayTrigger
+                trigger={[
+                    'hover',
+                    'focus',
+                ]}
+                placement='top'
+                overlay={(props) => <Tooltip {...props}>{copied ? t('Copied') : t('Copy to Clipboard')}</Tooltip>}
+                onToggle={(show) => {
+                    if (show) setCopied(false)
+                }}
+            >
+                <span className='d-inline-block'>
+                    <BsClipboard
+                        onClick={handleCopy}
+                        size={20}
+                    />
+                </span>
+            </OverlayTrigger>
         )
     }
 

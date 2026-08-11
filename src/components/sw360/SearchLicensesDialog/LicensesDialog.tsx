@@ -12,52 +12,48 @@
 
 import { ColumnDef, getCoreRowModel, useReactTable } from '@tanstack/react-table'
 import { StatusCodes } from 'http-status-codes'
-import { signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { type JSX, useEffect, useMemo, useState } from 'react'
 import { Button, Form, Modal, Spinner } from 'react-bootstrap'
 import { Embedded, ErrorDetails, LicenseDetail, PageableQueryParam, PaginationMeta } from '@/object-types'
-import MessageService from '@/services/message.service'
-import { ApiUtils, CommonUtils } from '@/utils'
+import { ApiError, CommonUtils } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
 import { PageSizeSelector, SW360Table, TableFooter } from '../Table/Components'
 
 interface Props {
     show: boolean
     setShow: React.Dispatch<React.SetStateAction<boolean>>
-    selectLicenses: (licenses: { [k: string]: string }) => void
-    releaseLicenses: {
-        [k: string]: string
-    }
+    selectLicenses: (licenses: string[]) => void
+    releaseLicenses: string[]
 }
 
 type EmbeddedLicenses = Embedded<LicenseDetail, 'sw360:licenses'>
 
 const LicensesDialog = ({ show, setShow, selectLicenses, releaseLicenses }: Props): JSX.Element => {
     const t = useTranslations('default')
-    const [selectedLicenses, setSelectedLicenses] = useState<{
-        [k: string]: string
-    }>(releaseLicenses)
+    const [selectedLicenses, setSelectedLicenses] = useState<string[]>(releaseLicenses)
     const [searchText, setSearchText] = useState<string | undefined>(undefined)
-    const session = useSession()
 
     useEffect(() => {
-        if (session.status === 'unauthenticated') {
-            void signOut()
-        }
+        setSelectedLicenses(releaseLicenses)
     }, [
-        session,
+        releaseLicenses,
+        show,
     ])
 
     const handleCheckbox = (item: LicenseDetail) => {
-        const copiedLicenses = {
+        const copiedLicenses = [
             ...selectedLicenses,
-        }
-        const licenseId = item._links?.self.href.split('/').at(-1)
+        ]
+        const licenseId = item.shortName
         if (licenseId === undefined) return
-        if (Object.keys(copiedLicenses).includes(licenseId)) {
-            delete copiedLicenses[licenseId]
+        if (copiedLicenses.includes(licenseId)) {
+            const index = copiedLicenses.indexOf(licenseId)
+            if (index > -1) {
+                copiedLicenses.splice(index, 1)
+            }
         } else {
-            copiedLicenses[licenseId] = item.fullName ?? ''
+            copiedLicenses.push(licenseId)
         }
         setSelectedLicenses(copiedLicenses)
     }
@@ -70,10 +66,8 @@ const LicensesDialog = ({ show, setShow, selectLicenses, releaseLicenses }: Prop
                     <Form.Check
                         name='licenseId'
                         type='checkbox'
-                        checked={Object.keys(selectedLicenses).includes(
-                            row.original._links?.self.href.split('/').at(-1) ?? '',
-                        )}
-                        onClick={() => {
+                        checked={selectedLicenses.includes(row.original.shortName ?? '')}
+                        onChange={() => {
                             handleCheckbox(row.original)
                         }}
                     ></Form.Check>
@@ -113,8 +107,6 @@ const LicensesDialog = ({ show, setShow, selectLicenses, releaseLicenses }: Prop
 
     const handleSearch = async (signal?: AbortSignal) => {
         try {
-            if (CommonUtils.isNullOrUndefined(session.data)) return signOut()
-
             const queryUrl = CommonUtils.createUrlWithParams(
                 `licenses`,
                 Object.fromEntries(
@@ -132,10 +124,12 @@ const LicensesDialog = ({ show, setShow, selectLicenses, releaseLicenses }: Prop
                     ]),
                 ),
             )
-            const response = await ApiUtils.GET(queryUrl, session.data.user.access_token, signal)
+            const response = await ApiUtils.GET(queryUrl, signal)
             if (response.status !== StatusCodes.OK) {
                 const err = (await response.json()) as ErrorDetails
-                throw new Error(err.message)
+                throw new ApiError(err.message, {
+                    status: response.status,
+                })
             }
 
             const data = (await response.json()) as EmbeddedLicenses
@@ -146,25 +140,20 @@ const LicensesDialog = ({ show, setShow, selectLicenses, releaseLicenses }: Prop
                     : data['_embedded']['sw360:licenses'],
             )
         } catch (error) {
-            if (error instanceof DOMException && error.name === 'AbortError') {
-                return
-            }
-            const message = error instanceof Error ? error.message : String(error)
-            MessageService.error(message)
+            ApiUtils.reportError(error)
         } finally {
             setShowProcessing(false)
         }
     }
 
     useEffect(() => {
-        if (session.status === 'loading' || searchText === undefined) return
+        if (searchText === undefined) return
         const controller = new AbortController()
         const signal = controller.signal
         handleSearch(signal)
         return () => controller.abort()
     }, [
         pageableQueryParam,
-        session,
     ])
 
     const handleClickSelectLicenses = () => {
@@ -211,8 +200,9 @@ const LicensesDialog = ({ show, setShow, selectLicenses, releaseLicenses }: Prop
 
     const handleCloseDialog = () => {
         setShow(!show)
-        setSelectedLicenses({})
+        setSelectedLicenses([])
         setLicenseData([])
+        setSearchText('')
     }
 
     return (
@@ -243,9 +233,13 @@ const LicensesDialog = ({ show, setShow, selectLicenses, releaseLicenses }: Prop
                         <div className='col-lg-4'>
                             <button
                                 type='button'
-                                className={`fw-bold btn btn-light button-plain me-2`}
+                                className='fw-bold btn btn-light button-plain me-2'
                                 onClick={() => {
                                     if (!searchText) setSearchText('')
+                                    setPageableQueryParam((prev) => ({
+                                        ...prev,
+                                        page: 0,
+                                    }))
                                     handleSearch()
                                 }}
                             >
@@ -253,11 +247,11 @@ const LicensesDialog = ({ show, setShow, selectLicenses, releaseLicenses }: Prop
                             </button>
                             <button
                                 type='button'
-                                className={`fw-bold btn btn-light button-plain me-2`}
+                                className='fw-bold btn btn-light button-plain me-2'
                                 onClick={() => {
                                     setSearchText('')
                                     setLicenseData([])
-                                    setSelectedLicenses({})
+                                    setSelectedLicenses([])
                                 }}
                             >
                                 {t('Reset')}

@@ -13,13 +13,14 @@
 
 import { StatusCodes } from 'http-status-codes'
 import { useRouter } from 'next/navigation'
-import { getSession, signOut, useSession } from 'next-auth/react'
+
 import { useTranslations } from 'next-intl'
-import React, { ReactNode, useEffect, useRef, useState } from 'react'
+import React, { ReactNode, useRef, useState } from 'react'
 import { Alert, Button, Modal } from 'react-bootstrap'
 
 import { Component } from '@/object-types'
-import { ApiUtils, CommonUtils } from '@/utils'
+import { CommonUtils } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
 
 interface Props {
     show: boolean
@@ -48,15 +49,6 @@ const ImportSBOMModal = ({ show, setShow }: Props): ReactNode => {
     const selectedFile = useRef<File | undefined>(undefined)
     const inputRef = useRef<HTMLInputElement>(undefined)
     const router = useRouter()
-    const { status } = useSession()
-
-    useEffect(() => {
-        if (status === 'unauthenticated') {
-            signOut()
-        }
-    }, [
-        status,
-    ])
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (!e.currentTarget.files) return
@@ -72,19 +64,11 @@ const ImportSBOMModal = ({ show, setShow }: Props): ReactNode => {
 
     const prepareImport = async () => {
         if (!selectedFile.current) return
-
-        const session = await getSession()
-        if (CommonUtils.isNullOrUndefined(session)) return signOut()
-
         setNotAllowedMessageDisplayed(false)
         const formData = new FormData()
         formData.append('file', selectedFile.current, selectedFile.current.name)
 
-        const response = await ApiUtils.POST(
-            'components/prepareImport/SBOM?type=SPDX',
-            formData,
-            session.user.access_token,
-        )
+        const response = await ApiUtils.POST('components/prepareImport/SBOM?type=SPDX', formData)
         if (response.status === StatusCodes.OK) {
             const responseData = (await response.json()) as PrepareImportData
             setPrepareImportData(responseData)
@@ -96,19 +80,11 @@ const ImportSBOMModal = ({ show, setShow }: Props): ReactNode => {
 
     const importFile = async () => {
         if (!selectedFile.current) return
-
-        const session = await getSession()
-        if (CommonUtils.isNullOrUndefined(session)) return signOut()
-
         const formData = new FormData()
         formData.append('file', selectedFile.current, selectedFile.current.name)
 
         try {
-            const response = await ApiUtils.POST(
-                'components/import/SBOM?type=SPDX',
-                formData,
-                session.user.access_token,
-            )
+            const response = await ApiUtils.POST('components/import/SBOM?type=SPDX', formData)
             if (response.status === StatusCodes.OK) {
                 const responseData = (await response.json()) as Component
                 router.push(`/components/detail/${responseData.id}`)
@@ -134,7 +110,7 @@ const ImportSBOMModal = ({ show, setShow }: Props): ReactNode => {
             return
         }
         setImportState(ImportSBOMState.IMPORTING)
-        prepareImport().catch((err) => console.log(err))
+        prepareImport().catch((err) => console.error(err))
     }
 
     const closeModal = () => {
@@ -177,9 +153,9 @@ const ImportSBOMModal = ({ show, setShow }: Props): ReactNode => {
                             {t('wrong_spdx_information')}.
                         </div>
                         <div>
-                            <div className='modal-body-first'>
+                            <div className='modal-body-bordered'>
                                 <div
-                                    className='modal-body-second'
+                                    className='text-center'
                                     onDragOver={handleDragOver}
                                     onDrop={handleDrop}
                                 >
@@ -188,7 +164,7 @@ const ImportSBOMModal = ({ show, setShow }: Props): ReactNode => {
                                     {t('Or')}
                                     <br />
                                     <input
-                                        className='sbom-input'
+                                        className='d-none'
                                         ref={inputRef as React.Ref<HTMLInputElement>}
                                         type='file'
                                         accept='.rdf,.spdx'
@@ -196,7 +172,7 @@ const ImportSBOMModal = ({ show, setShow }: Props): ReactNode => {
                                         placeholder={t('Drop a File Here')}
                                     />
                                     <button
-                                        className='button-browse'
+                                        className='btn btn-secondary'
                                         onClick={handleBrowseFile}
                                     >
                                         {t('Browse')}

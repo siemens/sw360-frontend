@@ -11,11 +11,10 @@
 
 import { ColumnDef, getCoreRowModel, getExpandedRowModel, useReactTable } from '@tanstack/react-table'
 import { StatusCodes } from 'http-status-codes'
-import { signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { Dispatch, type JSX, SetStateAction, useEffect, useMemo, useState } from 'react'
 import { Spinner } from 'react-bootstrap'
-import { PaddedCell, PageSizeSelector, SW360Table, TableFooter } from '@/components/sw360'
+import { PaddedCell, PageSizeSelector, SW360Table, TableFooter, UpdateCommentModal } from '@/components/sw360'
 import {
     ActionType,
     ErrorDetails,
@@ -26,17 +25,11 @@ import {
     ObligationType,
     PageableQueryParam,
     PaginationMeta,
+    UpdateCommentModalMetadata,
 } from '@/object-types'
-import MessageService from '@/services/message.service'
+import { ApiError } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
 import CommonUtils from '@/utils/common.utils'
-import { ApiUtils } from '@/utils/index'
-import { ObligationLevels } from '../../../../../../object-types/Obligation'
-import UpdateCommentModal from './UpdateCommentModal'
-
-interface UpdateCommentModalMetadata {
-    obligation: string
-    comment?: string
-}
 
 interface Props {
     projectId: string
@@ -58,15 +51,6 @@ export default function ObligationTab({
 }: Props): JSX.Element {
     const t = useTranslations('default')
     const [updateCommentModalData, setUpdateCommentModalData] = useState<UpdateCommentModalMetadata | null>(null)
-    const session = useSession()
-
-    useEffect(() => {
-        if (session.status === 'unauthenticated') {
-            void signOut()
-        }
-    }, [
-        session,
-    ])
 
     const detailColumns = useMemo<
         ColumnDef<
@@ -203,7 +187,7 @@ export default function ObligationTab({
                                 obligationValue = {
                                     ...obligationValue,
                                     status: e.target.value,
-                                    obligationType: ObligationLevels.ORGANISATION_OBLIGATION,
+                                    obligationType,
                                 }
                                 setPayload((payload: ObligationEntry) => ({
                                     ...payload,
@@ -246,7 +230,7 @@ export default function ObligationTab({
                 },
             },
             {
-                id: 'id',
+                id: 'comment',
                 header: t('Comment'),
                 cell: ({ row }) => (
                     <input
@@ -254,8 +238,9 @@ export default function ObligationTab({
                         value={payload?.[row.original.node[0]]?.comment ?? row.original.node[1].comment ?? ''}
                         onClick={() => {
                             setUpdateCommentModalData({
-                                comment: payload?.[row.original.node[0]]?.comment ?? row.original.node[1].comment ?? '',
-                                obligation: row.original.node[0],
+                                initialCommentValue:
+                                    payload?.[row.original.node[0]]?.comment ?? row.original.node[1].comment ?? '',
+                                id: row.original.node[0],
                             })
                         }}
                         className='form-control'
@@ -302,7 +287,6 @@ export default function ObligationTab({
     const [showProcessing, setShowProcessing] = useState(false)
 
     useEffect(() => {
-        if (session.status === 'loading') return
         const controller = new AbortController()
         const signal = controller.signal
 
@@ -313,7 +297,6 @@ export default function ObligationTab({
 
         void (async () => {
             try {
-                if (CommonUtils.isNullOrUndefined(session.data)) return signOut()
                 const queryUrl = CommonUtils.createUrlWithParams(
                     `projects/${projectId}/obligation`,
                     Object.fromEntries(
@@ -331,10 +314,12 @@ export default function ObligationTab({
                         ]),
                     ),
                 )
-                const response = await ApiUtils.GET(queryUrl, session.data.user.access_token, signal)
+                const response = await ApiUtils.GET(queryUrl, signal)
                 if (response.status !== StatusCodes.OK) {
                     const err = (await response.json()) as ErrorDetails
-                    throw new Error(err.message)
+                    throw new ApiError(err.message, {
+                        status: response.status,
+                    })
                 }
 
                 const data = (await response.json()) as ObligationResponse
@@ -358,11 +343,7 @@ export default function ObligationTab({
                     ),
                 )
             } catch (error) {
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                    return
-                }
-                const message = error instanceof Error ? error.message : String(error)
-                MessageService.error(message)
+                ApiUtils.reportError(error)
             } finally {
                 clearTimeout(timeout)
                 setShowProcessing(false)
@@ -372,7 +353,6 @@ export default function ObligationTab({
         return () => controller.abort()
     }, [
         pageableQueryParam,
-        session,
     ])
 
     const detailTable = useReactTable({
@@ -417,10 +397,6 @@ export default function ObligationTab({
                 }
             }
             return row.depth === 0
-        },
-
-        meta: {
-            rowHeightConstant: true,
         },
     })
 
@@ -475,10 +451,6 @@ export default function ObligationTab({
             }
             return row.depth === 0
         },
-
-        meta: {
-            rowHeightConstant: true,
-        },
     })
 
     editTable.getRowModel().rows.forEach((row) => {
@@ -494,9 +466,20 @@ export default function ObligationTab({
             <UpdateCommentModal
                 modalMetaData={updateCommentModalData}
                 setModalMetaData={setUpdateCommentModalData}
-                payload={payload}
-                setPayload={setPayload}
-                obligationTypeName={ObligationLevels.ORGANISATION_OBLIGATION}
+                setCommentInPayload={(comment: string) => {
+                    if (payload && updateCommentModalData?.id && setPayload) {
+                        let obligationValue = payload[updateCommentModalData.id]
+                        obligationValue = {
+                            ...obligationValue,
+                            comment: comment,
+                            obligationType: obligationType,
+                        }
+                        setPayload((payload: ObligationEntry) => ({
+                            ...payload,
+                            [updateCommentModalData.id]: obligationValue,
+                        }))
+                    }
+                }}
             />
             <div className='mb-3'>
                 {pageableQueryParam && paginationMeta && detailTable && editTable ? (

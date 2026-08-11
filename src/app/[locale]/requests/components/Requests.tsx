@@ -11,15 +11,14 @@
 
 import { StatusCodes } from 'http-status-codes'
 import { notFound } from 'next/navigation'
-import { getSession, signOut, useSession } from 'next-auth/react'
+
 import { useTranslations } from 'next-intl'
 import { AdvancedSearch } from 'next-sw360'
 import { ReactNode, useEffect, useState } from 'react'
 import { Col, ListGroup, Row, Tab } from 'react-bootstrap'
 import { AccessControl } from '@/components/AccessControl/AccessControl'
 import { ClearingRequest, Embedded, ModerationRequest, RequestType, UserGroupType } from '@/object-types'
-import MessageService from '@/services/message.service'
-import { ApiUtils, CommonUtils } from '@/utils/index'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
 import ClearingRequestComponent from './ClearingRequest'
 import ClosedModerationRequest from './ClosedModerationRequest'
 import OpenModerationRequest from './OpenModerationRequest'
@@ -29,19 +28,10 @@ type EmbeddedClearingRequest = Embedded<ClearingRequest, 'sw360:clearingRequests
 
 function Requests(): ReactNode | undefined {
     const t = useTranslations('default')
-    const { status } = useSession()
     const [openModerationRequestCount, setOpenModerationRequestCount] = useState(0)
     const [closedModerationRequestCount, setClosedModerationRequestCount] = useState(0)
     const [openClearingRequestCount, setOpenClearingRequestCount] = useState(0)
     const [closedClearingRequestCount, setClosedClearingRequestCount] = useState(0)
-
-    useEffect(() => {
-        if (status === 'unauthenticated') {
-            signOut()
-        }
-    }, [
-        status,
-    ])
 
     const advancedSearch = [
         {
@@ -151,10 +141,8 @@ function Requests(): ReactNode | undefined {
         const signal = controller.signal
         void (async () => {
             try {
-                const session = await getSession()
-                if (CommonUtils.isNullOrUndefined(session)) return signOut()
-                const moderationRequestsPromsies = ApiUtils.GET('moderationrequest', session.user.access_token, signal)
-                const clearingRequestsPromises = ApiUtils.GET('clearingrequests', session.user.access_token, signal)
+                const moderationRequestsPromsies = ApiUtils.GET('moderationrequest', signal)
+                const clearingRequestsPromises = ApiUtils.GET('clearingrequests', signal)
 
                 const responses = await Promise.all([
                     moderationRequestsPromsies,
@@ -199,11 +187,7 @@ function Requests(): ReactNode | undefined {
                 setOpenClearingRequestCount(openCRCount)
                 setClosedClearingRequestCount(closedCRCount)
             } catch (error) {
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                    return
-                }
-                const message = error instanceof Error ? error.message : String(error)
-                MessageService.error(message)
+                ApiUtils.reportError(error)
             }
         })()
         return () => {

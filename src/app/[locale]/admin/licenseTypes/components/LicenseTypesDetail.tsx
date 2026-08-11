@@ -12,16 +12,15 @@
 import { ColumnDef, getCoreRowModel, getPaginationRowModel, useReactTable } from '@tanstack/react-table'
 import { StatusCodes } from 'http-status-codes'
 import { useRouter } from 'next/navigation'
-import { signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { ClientSidePageSizeSelector, ClientSideTableFooter, QuickFilter, SW360Table } from 'next-sw360'
 import { ReactNode, useEffect, useMemo, useState } from 'react'
 import { OverlayTrigger, Spinner, Tooltip } from 'react-bootstrap'
 import { BsFillTrashFill } from 'react-icons/bs'
 import { Embedded, ErrorDetails, LicenseType } from '@/object-types'
-import MessageService from '@/services/message.service'
+import { ApiError } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
 import CommonUtils from '@/utils/common.utils'
-import { ApiUtils } from '@/utils/index'
 import DeleteLicenseTypesModal from './DeleteLicenseTypesModal'
 
 type EmbeddedLicenseTypes = Embedded<LicenseType, 'sw360:licenseTypes'>
@@ -34,15 +33,6 @@ export default function LicenseTypesDetail(): ReactNode {
     const [licenseTypeName, setLicenseTypeName] = useState<string>('')
     const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false)
     const [licenseTypeCount, setLicenseTypeCount] = useState<null | number>(null)
-    const session = useSession()
-
-    useEffect(() => {
-        if (session.status === 'unauthenticated') {
-            void signOut()
-        }
-    }, [
-        session,
-    ])
 
     const columns = useMemo<ColumnDef<LicenseType>[]>(
         () => [
@@ -95,7 +85,6 @@ export default function LicenseTypesDetail(): ReactNode {
     const [showProcessing, setShowProcessing] = useState(true)
 
     useEffect(() => {
-        if (session.status === 'loading') return
         const controller = new AbortController()
         const signal = controller.signal
 
@@ -106,7 +95,6 @@ export default function LicenseTypesDetail(): ReactNode {
 
         void (async () => {
             try {
-                if (CommonUtils.isNullOrUndefined(session.data)) return signOut()
                 const queryUrl = CommonUtils.createUrlWithParams(
                     'licenseTypes',
                     Object.fromEntries(
@@ -116,14 +104,16 @@ export default function LicenseTypesDetail(): ReactNode {
                         ]),
                     ),
                 )
-                const response = await ApiUtils.GET(queryUrl, session.data.user.access_token, signal)
+                const response = await ApiUtils.GET(queryUrl, signal)
                 if (response.status !== StatusCodes.OK) {
                     const err = (await response.json()) as ErrorDetails
-                    throw new Error(err.message)
+                    throw new ApiError(err.message, {
+                        status: response.status,
+                    })
                 }
 
                 const data = (await response.json()) as EmbeddedLicenseTypes
-                console.log(data['_embedded']?.['sw360:licenseTypes'])
+
                 setLicenseTypes(
                     CommonUtils.isNullOrUndefined(data?.['_embedded']?.['sw360:licenseTypes'])
                         ? []
@@ -131,11 +121,7 @@ export default function LicenseTypesDetail(): ReactNode {
                 )
                 setLicenseTypeCount(data['_embedded']?.['sw360:licenseTypes'].length ?? 0)
             } catch (error) {
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                    return
-                }
-                const message = error instanceof Error ? error.message : String(error)
-                MessageService.error(message)
+                ApiUtils.reportError(error)
             } finally {
                 clearTimeout(timeout)
                 setShowProcessing(false)
@@ -144,7 +130,6 @@ export default function LicenseTypesDetail(): ReactNode {
 
         return () => controller.abort()
     }, [
-        session,
         quickFilter,
     ])
 

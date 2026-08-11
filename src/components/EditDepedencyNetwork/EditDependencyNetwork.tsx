@@ -11,15 +11,16 @@
 'use client'
 
 import { StatusCodes } from 'http-status-codes'
-import { getSession, signOut } from 'next-auth/react'
+
 import { useTranslations } from 'next-intl'
 import React, { type JSX, ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { Alert, Tooltip as BootstrapTooltip, Button, Form, Modal, OverlayTrigger, Spinner } from 'react-bootstrap'
 import { BsArrowCounterclockwise, BsFillTrashFill, BsInfoCircle, BsPlusLg, BsQuestionCircle } from 'react-icons/bs'
 import { Embedded, ProjectPayload, ReleaseDetail, ReleaseLink, ReleaseNode } from '@/object-types'
 import MessageService from '@/services/message.service'
-import { ApiUtils, CommonUtils } from '@/utils/index'
-import SearchReleasesModal from '../sw360/SearchReleasesModal/SearchReleasesModal'
+import { CommonUtils } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
+import SearchReleasesModal from '../sw360/SearchReleasesModal'
 import LinkedReleasesTable from './LinkedReleasesTable'
 
 interface CheckCyclicLinkPayload {
@@ -287,15 +288,7 @@ const EditDependencyNetwork = ({ projectId, projectPayload, setProjectPayload }:
 
     const loadDefaultNetwork = async (releaseNode: ReleaseNode) => {
         if (network === undefined) return
-        const session = await getSession()
-        if (CommonUtils.isNullOrUndefined(session)) {
-            MessageService.error(t('Session has expired'))
-            return signOut()
-        }
-        const response = await ApiUtils.GET(
-            `releases/${releaseNode.releaseId}/releases?transitive=true`,
-            session.user.access_token,
-        )
+        const response = await ApiUtils.GET(`releases/${releaseNode.releaseId}/releases?transitive=true`)
         if (response.status === StatusCodes.UNAUTHORIZED) {
             MessageService.error(t('Session has expired'))
             return
@@ -334,12 +327,7 @@ const EditDependencyNetwork = ({ projectId, projectPayload, setProjectPayload }:
     }
 
     const fetchNetwork = useCallback(async () => {
-        const session = await getSession()
-        if (CommonUtils.isNullOrUndefined(session)) {
-            MessageService.error(t('Session has expired'))
-            return signOut()
-        }
-        const response = await ApiUtils.GET(`projects/network/${projectId}/linkedReleases`, session.user.access_token)
+        const response = await ApiUtils.GET(`projects/network/${projectId}/linkedReleases`)
         if (response.status === StatusCodes.UNAUTHORIZED) {
             MessageService.error(t('Session has expired'))
             return
@@ -546,13 +534,7 @@ const EditDependencyNetwork = ({ projectId, projectPayload, setProjectPayload }:
     const fetchOtherVersionsOfRelease = async (release: ReleaseNode) => {
         if (network === undefined) return
         if (!(release.otherReleaseVersions === undefined)) return
-
-        const session = await getSession()
-        if (CommonUtils.isNullOrUndefined(session)) {
-            MessageService.error(t('Session has expired'))
-            return signOut()
-        }
-        const response = await ApiUtils.GET(`components/${release.componentId}/releases`, session.user.access_token)
+        const response = await ApiUtils.GET(`components/${release.componentId}/releases`)
         if (response.status === StatusCodes.UNAUTHORIZED) {
             MessageService.error(t('Session has expired'))
             return
@@ -579,21 +561,11 @@ const EditDependencyNetwork = ({ projectId, projectPayload, setProjectPayload }:
 
     const compareWithDefault = async () => {
         if (network === undefined) return
-        const session = await getSession()
-        if (CommonUtils.isNullOrUndefined(session)) {
-            MessageService.error(t('Session has expired'))
-            return signOut()
-        }
-
         if (compareSpinner.current !== null) {
             compareSpinner.current.style.display = 'inline-block'
         }
 
-        const response = await ApiUtils.POST(
-            'projects/network/compareDefaultNetwork',
-            network,
-            session.user.access_token,
-        )
+        const response = await ApiUtils.POST('projects/network/compareDefaultNetwork', network)
         const comparedNetwork = (await response.json()) as Array<ReleaseNode>
         setNetwork(comparedNetwork)
 
@@ -606,21 +578,12 @@ const EditDependencyNetwork = ({ projectId, projectPayload, setProjectPayload }:
         linkedReleases: Array<string>,
         linkedToReleases: Array<string>,
         checkingReleaseId: string,
-    ) => {
-        const session = await getSession()
-        if (CommonUtils.isNullOrUndefined(session)) {
-            MessageService.error(t('Session has expired'))
-            return signOut()
-        }
+    ): Promise<Array<string>> => {
         const cyclicCheckPayload: CheckCyclicLinkPayload = {
             linkedReleases: linkedReleases,
             linkedToReleases: linkedToReleases,
         }
-        const response = await ApiUtils.POST(
-            `releases/${checkingReleaseId}/checkCyclicLink`,
-            cyclicCheckPayload,
-            session.user.access_token,
-        )
+        const response = await ApiUtils.POST(`releases/${checkingReleaseId}/checkCyclicLink`, cyclicCheckPayload)
         const cyclicLinks: Array<string> = []
         if (response.status == StatusCodes.MULTI_STATUS) {
             const data = (await response.json()) as Array<CheckCyclicResponse>
@@ -718,7 +681,7 @@ const EditDependencyNetwork = ({ projectId, projectPayload, setProjectPayload }:
 
     return (
         <div className='row mb-4'>
-            <div className='dependency-network-title mb-2'>
+            <div className='header'>
                 <h6 className='fw-bold text-uppercase'>
                     {t('Linked Releases')}
                     <hr className='my-2 mb-2' />
@@ -747,7 +710,6 @@ const EditDependencyNetwork = ({ projectId, projectPayload, setProjectPayload }:
                             onClose={() => closeMessage()}
                             variant={message.variant}
                             dismissible
-                            className='dependency-network-message'
                         >
                             <b>
                                 <BsInfoCircle size={20} /> {message.variant === 'danger' ? t('Warning') : t('Success')}:
@@ -800,7 +762,8 @@ const EditDependencyNetwork = ({ projectId, projectPayload, setProjectPayload }:
                     projectId={projectId}
                     show={showReleaseModal}
                     setShow={setShowReleaseModal}
-                    setSelectedReleases={setSelectedReleases}
+                    onSelect={setSelectedReleases}
+                    showSubProjectReleases={true}
                 />
                 <Modal
                     className='modal-danger'

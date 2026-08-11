@@ -12,14 +12,14 @@
 import { StatusCodes } from 'http-status-codes'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { getSession, signOut, useSession } from 'next-auth/react'
+
 import { useTranslations } from 'next-intl'
 import { Dispatch, type JSX, SetStateAction, useEffect, useState } from 'react'
 import { Alert, Button, Form, Modal } from 'react-bootstrap'
 import { BsCheck2Square } from 'react-icons/bs'
-
 import { ClearingRequestDetails } from '@/object-types'
-import { ApiUtils, CommonUtils } from '@/utils/index'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
+import { dispatchSessionExpiredEvent } from '@/utils/sessionExpiry.utils'
 
 interface Props {
     show: boolean
@@ -45,15 +45,6 @@ export default function ViewClearingRequestModal({
         setMessage(message)
         setShowMessage(true)
     }
-    const { status } = useSession()
-
-    useEffect(() => {
-        if (status === 'unauthenticated') {
-            signOut()
-        }
-    }, [
-        status,
-    ])
 
     useEffect(() => {
         const controller = new AbortController()
@@ -63,22 +54,20 @@ export default function ViewClearingRequestModal({
 
         void (async () => {
             try {
-                const session = await getSession()
-                if (CommonUtils.isNullOrUndefined(session)) return signOut()
-                const response = await ApiUtils.GET(`clearingrequest/${clearingRequestId}`, session.user.access_token)
+                const response = await ApiUtils.GET(`clearingrequest/${clearingRequestId}`)
                 if (response.status == StatusCodes.OK) {
                     const data = (await response.json()) as ClearingRequestDetails
                     setClearingRequestData(data)
                 } else if (response.status == StatusCodes.FORBIDDEN) {
                     displayMessage('warning', t('Failed to fetch clearing request from database'))
-                    return signOut()
+                    return dispatchSessionExpiredEvent()
                 } else if (response.status == StatusCodes.UNAUTHORIZED) {
-                    return signOut()
+                    return dispatchSessionExpiredEvent()
                 } else {
                     notFound()
                 }
             } catch (e) {
-                console.error(e)
+                ApiUtils.reportError(e)
             }
         })()
         return () => controller.abort(signal)
@@ -149,52 +138,52 @@ export default function ViewClearingRequestModal({
                         <br />
                     </Form.Group>
                     <>
-                        <table className='table label-value-table request-summary-table'>
+                        <table className={`table summary-table`}>
                             <tbody>
                                 <tr>
-                                    <td className='request-summary-table-view-cr'>
+                                    <td className={`summary-table-view-cr`}>
                                         <b>{t('Requesting User')}:</b>
                                     </td>
                                     <td>{clearingRequestData?.requestingUser ?? ''}</td>
                                 </tr>
                                 <tr>
-                                    <td className='request-summary-table-view-cr'>
+                                    <td className={`summary-table-view-cr`}>
                                         <b>{t('Requester Comment')}:</b>
                                     </td>
                                     <td>{clearingRequestData?.requestingUserComment ?? ''}</td>
                                 </tr>
                                 <tr>
-                                    <td className='request-summary-table-view-cr'>
+                                    <td className={`summary-table-view-cr`}>
                                         <b>{t('Created On')}:</b>
                                     </td>
                                     <td>{clearingRequestData?._embedded?.createdOn ?? ''}</td>
                                 </tr>
                                 <tr>
-                                    <td className='request-summary-table-view-cr'>
+                                    <td className={`summary-table-view-cr`}>
                                         <b>{t('Preferred Clearing Date')}:</b>
                                     </td>
                                     <td>{clearingRequestData?.requestedClearingDate ?? ''}</td>
                                 </tr>
                                 <tr>
-                                    <td className='request-summary-table-view-cr'>
+                                    <td className={`summary-table-view-cr`}>
                                         <b>{t('Clearing Team')}:</b>
                                     </td>
                                     <td>{clearingRequestData?.clearingTeam ?? ''}</td>
                                 </tr>
                                 <tr>
-                                    <td className='request-summary-table-view-cr'>
+                                    <td className={`summary-table-view-cr`}>
                                         <b>{t('Agreed Clearing Date')}:</b>
                                     </td>
                                     <td>{clearingRequestData?.agreedClearingDate ?? ''}</td>
                                 </tr>
                                 <tr>
-                                    <td className='request-summary-table-view-cr'>
+                                    <td className={`summary-table-view-cr`}>
                                         <b>{t('Priority')}:</b>
                                     </td>
                                     <td>{clearingRequestData?.priority ?? ''}</td>
                                 </tr>
                                 <tr>
-                                    <td className='request-summary-table-view-cr'>
+                                    <td className={`summary-table-view-cr`}>
                                         <b>{t('Request Status')}:</b>
                                     </td>
                                     <td>{clearingRequestData?.clearingState ?? ''}</td>

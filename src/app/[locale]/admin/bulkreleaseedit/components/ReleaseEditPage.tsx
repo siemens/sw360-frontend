@@ -11,15 +11,14 @@
 
 import { ColumnDef, getCoreRowModel, useReactTable } from '@tanstack/react-table'
 import { StatusCodes } from 'http-status-codes'
-import { getSession, signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { PageSizeSelector, QuickFilter, SW360Table, TableFooter, VendorDialog } from 'next-sw360'
 import React, { Dispatch, type JSX, SetStateAction, useEffect, useMemo, useState } from 'react'
 import { Alert, Modal, Spinner } from 'react-bootstrap'
 import { BsXCircle } from 'react-icons/bs'
 import { Embedded, ErrorDetails, PageableQueryParam, PaginationMeta, Release, Vendor } from '@/object-types'
-import MessageService from '@/services/message.service'
-import { ApiUtils, CommonUtils } from '@/utils'
+import { ApiError, CommonUtils } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
 
 interface AlertData {
     variant: string
@@ -41,20 +40,11 @@ function UpdateReleaseModal({
     const [vendor, setVendor] = useState<Vendor>(release?.vendor ?? {})
     const [selectVendor, setSelectVendor] = useState(false)
     const [alert, setAlert] = useState<AlertData | null>(null)
-    const { status } = useSession()
-
-    useEffect(() => {
-        if (status === 'unauthenticated') {
-            signOut()
-        }
-    }, [
-        status,
-    ])
 
     useEffect(() => {
         setVendor(release?.vendor ?? {})
     }, [
-        release,
+        release?.id,
     ])
 
     function handleClose() {
@@ -67,10 +57,8 @@ function UpdateReleaseModal({
     const handleEditRelease = async (release: Release | null) => {
         if (release === null) return
         try {
-            const session = await getSession()
-            if (CommonUtils.isNullOrUndefined(session)) return signOut()
-
-            const response = await ApiUtils.PATCH(`releases/${release.id}`, release, session.user.access_token)
+            const { vendor: _vendor, ...releasePayload } = release
+            const response = await ApiUtils.PATCH(`releases/${release.id}`, releasePayload)
 
             if (response.status == StatusCodes.OK) {
                 setAlert({
@@ -84,13 +72,16 @@ function UpdateReleaseModal({
                 setReloadKey(reloadKey + 1)
             } else {
                 const err = (await response.json()) as ErrorDetails
-                throw new Error(err.message)
+                throw new ApiError(err.message, {
+                    status: response.status,
+                })
             }
         } catch (error) {
-            if (error instanceof DOMException && error.name === 'AbortError') {
+            if (error instanceof ApiError && error.isAborted) {
                 return
             }
-            const message = error instanceof Error ? error.message : String(error)
+            const message =
+                error instanceof ApiError ? error.message : error instanceof Error ? error.message : String(error)
             setAlert({
                 variant: 'danger',
                 message: (
@@ -116,7 +107,6 @@ function UpdateReleaseModal({
 
     const handleSetVendorData = (vendorResponse: Vendor) => {
         setVendor(vendorResponse)
-        console.log(vendorResponse)
         setRelease({
             ...release,
             vendorId: vendorResponse._links?.self.href.split('/').at(-1),
@@ -262,16 +252,6 @@ export default function BulkReleaseEdit(): JSX.Element {
     const [reloadKey, setReloadKey] = useState(1)
     const [search, setSearch] = useState('')
 
-    const session = useSession()
-
-    useEffect(() => {
-        if (session.status === 'unauthenticated') {
-            void signOut()
-        }
-    }, [
-        session,
-    ])
-
     const columns = useMemo<ColumnDef<Release>[]>(
         () => [
             {
@@ -379,7 +359,6 @@ export default function BulkReleaseEdit(): JSX.Element {
     const [showProcessing, setShowProcessing] = useState(false)
 
     useEffect(() => {
-        if (session.status === 'loading') return
         const controller = new AbortController()
         const signal = controller.signal
 
@@ -390,7 +369,6 @@ export default function BulkReleaseEdit(): JSX.Element {
 
         void (async () => {
             try {
-                if (CommonUtils.isNullOrUndefined(session.data)) return signOut()
                 const queryUrl = CommonUtils.createUrlWithParams(
                     `releases`,
                     Object.fromEntries(
@@ -409,14 +387,16 @@ export default function BulkReleaseEdit(): JSX.Element {
                         ]),
                     ),
                 )
-                const response = await ApiUtils.GET(queryUrl, session.data.user.access_token, signal)
+                const response = await ApiUtils.GET(queryUrl, signal)
                 if (response.status === StatusCodes.NO_CONTENT) {
                     setReleaseData([])
                     return
                 }
                 if (response.status !== StatusCodes.OK) {
                     const err = (await response.json()) as ErrorDetails
-                    throw new Error(err.message)
+                    throw new ApiError(err.message, {
+                        status: response.status,
+                    })
                 }
 
                 const data = (await response.json()) as Embedded<Release, 'sw360:releases'>
@@ -427,11 +407,7 @@ export default function BulkReleaseEdit(): JSX.Element {
                         : data['_embedded']['sw360:releases'],
                 )
             } catch (error) {
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                    return
-                }
-                const message = error instanceof Error ? error.message : String(error)
-                MessageService.error(message)
+                ApiUtils.reportError(error)
             } finally {
                 clearTimeout(timeout)
                 setShowProcessing(false)
@@ -441,7 +417,6 @@ export default function BulkReleaseEdit(): JSX.Element {
         return () => controller.abort()
     }, [
         pageableQueryParam,
-        session,
         search,
         reloadKey,
     ])
@@ -450,7 +425,7 @@ export default function BulkReleaseEdit(): JSX.Element {
         setPageableQueryParam({
             page: 0,
             page_entries: 10,
-            sort: '',
+            sort: Object.keys(search).length > 0 ? 'score,asc' : '',
         })
     }, [
         search,

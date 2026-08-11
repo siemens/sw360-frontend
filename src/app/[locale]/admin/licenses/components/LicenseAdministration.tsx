@@ -10,15 +10,15 @@
 'use client'
 
 import { StatusCodes } from 'http-status-codes'
-import { signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
-import { Dispatch, JSX, ReactNode, SetStateAction, useEffect, useRef, useState } from 'react'
+import { Dispatch, JSX, ReactNode, SetStateAction, useRef, useState } from 'react'
 import { Alert, Modal } from 'react-bootstrap'
 import { FaRegQuestionCircle } from 'react-icons/fa'
 import { ErrorDetails } from '@/object-types'
 import DownloadService from '@/services/download.service'
 import MessageService from '@/services/message.service'
-import { ApiUtils } from '@/utils'
+import { ApiError } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
 import DeleteAllLicenseInformationModal from './DeleteAllLicenseInformationModal'
 
 type ModalType = 'OSADL' | 'SPDX' | undefined
@@ -49,24 +49,12 @@ function ConfirmationModal({ type, setType }: { type: ModalType; setType: Dispat
         DONE,
     }
     const [state, setState] = useState<ImportState>(ImportState.IMPORT)
-    const session = useSession()
     const [alert, setAlert] = useState<AlertData | null>(null)
-
-    useEffect(() => {
-        if (session.status === 'unauthenticated') {
-            signOut()
-        }
-    }, [
-        session,
-    ])
 
     const handleImport = async () => {
         try {
             setState(ImportState.LOADING)
-            if (!session.data) {
-                return signOut()
-            }
-            const response = await ApiUtils.POST(url, {}, session.data.user.access_token)
+            const response = await ApiUtils.POST(url, {})
             const res = (await response.json()) as ImportResult
             if (response.status !== StatusCodes.OK) {
                 setState(ImportState.IMPORT)
@@ -90,11 +78,7 @@ function ConfirmationModal({ type, setType }: { type: ModalType; setType: Dispat
                 ),
             })
         } catch (error: unknown) {
-            if (error instanceof DOMException && error.name === 'AbortError') {
-                return
-            }
-            const message = error instanceof Error ? error.message : String(error)
-            MessageService.error(message)
+            ApiUtils.reportError(error)
         }
     }
 
@@ -167,15 +151,6 @@ export default function LicenseAdministration(): ReactNode {
     const [overwriteIfIdMatchesEvenWithoutExternalIdMatch, setOverwriteIfIdMatchesEvenWithoutExternalIdMatch] =
         useState(false)
     const [confirmationModalType, setConfirmationModalType] = useState<ModalType>(undefined)
-    const session = useSession()
-
-    useEffect(() => {
-        if (session.status === 'unauthenticated') {
-            signOut()
-        }
-    }, [
-        session,
-    ])
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.currentTarget.files
@@ -194,41 +169,30 @@ export default function LicenseAdministration(): ReactNode {
             const formData = new FormData()
             formData.append('licenseFile', file.current, file.current.name)
 
-            if (!session.data) {
-                return signOut()
-            }
             const response = await ApiUtils.POST(
                 `licenses/upload?overwriteIfExternalIdMatches=${
                     overwriteIfExternalIdMatches
                 }&overwriteIfIdMatchesEvenWithoutExternalIdMatch=${overwriteIfIdMatchesEvenWithoutExternalIdMatch}`,
                 formData,
-                session.data.user.access_token,
             )
             if (response.status === StatusCodes.OK) {
                 MessageService.success(t('Licenses uploaded successfully'))
             } else {
                 const err = (await response.json()) as ErrorDetails
-                throw new Error(err.message)
+                throw new ApiError(err.message, {
+                    status: response.status,
+                })
             }
         } catch (error) {
-            if (error instanceof DOMException && error.name === 'AbortError') {
-                return
-            }
-            const message = error instanceof Error ? error.message : String(error)
-            MessageService.error(message)
+            ApiUtils.reportError(error)
         }
     }
 
     const downloadLicenseArchive = () => {
         try {
-            if (!session.data) return signOut()
-            void DownloadService.download('licenses/downloadLicenses', session.data, `LicensesBackup.lics`)
+            void DownloadService.download('licenses/downloadLicenses', `LicensesBackup.lics`)
         } catch (error) {
-            if (error instanceof DOMException && error.name === 'AbortError') {
-                return
-            }
-            const message = error instanceof Error ? error.message : String(error)
-            MessageService.error(message)
+            ApiUtils.reportError(error)
         }
     }
 

@@ -12,13 +12,14 @@
 'use client'
 
 import { StatusCodes } from 'http-status-codes'
-import { getSession, signOut, useSession } from 'next-auth/react'
+
 import { useTranslations } from 'next-intl'
 import { type JSX, useCallback, useEffect, useRef, useState } from 'react'
 import { Alert, Button, Modal } from 'react-bootstrap'
 import { Attachment, FossologyProcessInfo, FossologyProcessStatus, ReleaseDetail } from '@/object-types'
 import MessageService from '@/services/message.service'
-import { ApiUtils, CommonUtils } from '@/utils'
+import { CommonUtils } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
 
 interface Props {
     show: boolean
@@ -40,7 +41,7 @@ const clearingMessages: {
         variant: 'success',
     },
     ERROR_PROCESSING: {
-        message: 'Error when processing!',
+        message: 'Error while processing',
         variant: 'danger',
     },
     SET_OUTDATED: {
@@ -78,15 +79,6 @@ const FossologyClearing = ({ show, setShow, releaseId }: Props): JSX.Element => 
         percent: 0,
         stepName: '',
     })
-    const { status } = useSession()
-
-    useEffect(() => {
-        if (status === 'unauthenticated') {
-            signOut()
-        }
-    }, [
-        status,
-    ])
 
     const resetTimeCountDown = () => {
         setTimeInterval(5)
@@ -106,12 +98,7 @@ const FossologyClearing = ({ show, setShow, releaseId }: Props): JSX.Element => 
     }, [])
 
     const fetchData = useCallback(async (url: string) => {
-        const session = await getSession()
-        if (CommonUtils.isNullOrUndefined(session)) {
-            MessageService.error(t('Session has expired'))
-            return signOut()
-        }
-        const response = await ApiUtils.GET(url, session.user.access_token)
+        const response = await ApiUtils.GET(url)
         if (response.status === StatusCodes.UNAUTHORIZED) {
             MessageService.error(t('Session has expired'))
             return undefined
@@ -126,7 +113,7 @@ const FossologyClearing = ({ show, setShow, releaseId }: Props): JSX.Element => 
     const fetchRelease = useCallback(() => {
         const url = `releases/${releaseId}`
         fetchData(url)
-            .then((data: ReleaseDetail | undefined) => {
+            .then((data) => {
                 if (data === undefined) return
                 setRelease(data)
                 numberOfSourceAttachment.current = countSourceAttachment(data._embedded['sw360:attachments'])
@@ -221,13 +208,8 @@ const FossologyClearing = ({ show, setShow, releaseId }: Props): JSX.Element => 
 
     const reloadReport = async () => {
         hideMessage()
-        const session = await getSession()
-        if (CommonUtils.isNullOrUndefined(session)) {
-            MessageService.error(t('Session has expired'))
-            return signOut()
-        }
         const url = `releases/${releaseId}/reloadFossologyReport`
-        const response = await ApiUtils.GET(url, session.user.access_token)
+        const response = await ApiUtils.GET(url)
         if (response.status === StatusCodes.OK) {
             clearAllInterval()
             setProgressStatus({
@@ -333,7 +315,7 @@ const FossologyClearing = ({ show, setShow, releaseId }: Props): JSX.Element => 
         if (show === true) {
             if (release === undefined) {
                 fetchRelease()
-                checkFossologyProcessStatus().catch((err) => console.log(err))
+                checkFossologyProcessStatus().catch((err) => console.error(err))
             } else {
                 if (progressStatus.percent >= PERCENT_DONE) {
                     showMessage(clearingMessages.CLEARING_SUCCESS)
@@ -345,7 +327,7 @@ const FossologyClearing = ({ show, setShow, releaseId }: Props): JSX.Element => 
                     progressStatus.percent === 0 &&
                     numberOfSourceAttachment.current == 1
                 ) {
-                    handleFossologyClearing({}).catch((err) => console.log(err))
+                    handleFossologyClearing({}).catch((err) => console.error(err))
                 }
 
                 if (progressStatus.percent >= PERCENT_DONE) {
@@ -389,7 +371,10 @@ const FossologyClearing = ({ show, setShow, releaseId }: Props): JSX.Element => 
                     >
                         {message.content}
                     </Alert>
-                    <div className='fossology-guide form-text'>
+                    <Alert
+                        variant='light'
+                        className='border border-info form-text'
+                    >
                         <h3>{t('How it works')}:</h3>
                         <p>{t('basic_fossology_process')}:</p>
                         <ol>
@@ -399,7 +384,7 @@ const FossologyClearing = ({ show, setShow, releaseId }: Props): JSX.Element => 
                         </ol>
                         <p></p>
                         <p>{t('hand_when_got_stuck_fossology')}</p>
-                    </div>
+                    </Alert>
                     <div>
                         {t('Found source attachment')}:
                         {release &&

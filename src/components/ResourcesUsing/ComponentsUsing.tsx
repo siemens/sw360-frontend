@@ -13,7 +13,7 @@ import { ColumnDef, getCoreRowModel, useReactTable } from '@tanstack/react-table
 import Link from 'next/link'
 import { useTranslations } from 'next-intl'
 import { type JSX, ReactNode, useMemo } from 'react'
-import { Spinner } from 'react-bootstrap'
+import { Alert, Spinner } from 'react-bootstrap'
 import { Component } from '@/object-types'
 import { SW360Table } from '../sw360'
 
@@ -58,22 +58,21 @@ const ComponentsUsing = ({ componentsUsing, documentName, showProcessing }: Prop
             },
             {
                 id: 'mainLicenses',
-                header: t('Main licenses'),
+                header: t('Main Licenses'),
                 cell: ({ row }) => {
                     return (
                         <>
                             {row.original.mainLicenseIds?.map(
                                 (lic, i): ReactNode => (
-                                    <>
+                                    <div key={lic}>
                                         <Link
-                                            key={lic}
                                             className='link'
                                             href={`/licenses/detail/?id=${lic}`}
                                         >
                                             {lic}
                                         </Link>
                                         {i !== (row.original.mainLicenseIds?.length ?? 0) - 1 && ', '}
-                                    </>
+                                    </div>
                                 ),
                             )}
                         </>
@@ -112,7 +111,7 @@ const ComponentsUsing = ({ componentsUsing, documentName, showProcessing }: Prop
 
     return (
         <>
-            <h5 className='resource-using-title'>{`${documentName} ${t('IS USED BY THE FOLLOWING COMPONENTS')}`}</h5>
+            <Alert variant='primary'>{`${documentName} ${t('IS USED BY THE FOLLOWING COMPONENTS')}`}</Alert>
             <div className='mb-3'>
                 {table ? (
                     <SW360Table

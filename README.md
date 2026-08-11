@@ -1,4 +1,5 @@
 # Eclipse SW360 Frontend
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/10706/badge)](https://www.bestpractices.dev/projects/10706)
 
 This is the main UI interface for SW360 project.
 
@@ -8,36 +9,53 @@ Please read our code [Code of Conduct](./CODE_OF_CONDUCT.md) before to help with
 
 For new contributors, please read the [contributing guideline](./CONTRIBUTING.md)
 
+## Docker Deployment
 
-## Deployment of a test environment
-Before test, a local build with your defined changes in bothe files:
+For instructions on running SW360 Frontend with Docker or Podman, see
+[README_DOCKER.md](README_DOCKER.md).
 
-`docker-compose.yaml`
-```yaml
-environment:
-  - NEXTAUTH_URL=http://localhost:3000
-  - NEXT_PUBLIC_SW360_API_URL=http://localhost:8080
-  - SW360_API_URL=http://localhost:8080
-  - AUTH_SECRET=<YourSecret>
-```
 
-`configs/couchdb/default_secrets`
-```toml
-COUCHDB_URL=http://couchdb:5984
-COUCHDB_USER=sw360
-COUCHDB_PASSWORD=sw360fossie
-```
+## SW360 Frontend — Playwright UI Tests
 
-You can use docker compose to build the test container:
+End-to-end UI tests for the SW360 Frontend, powered by [Playwright](https://playwright.dev/).
+Tests live in [`tests/e2e/`](./e2e) and are organized by application module.
 
-```bash
-docker compose build
-```
+---
 
-This will create an image that now can be started with the necessary dependencies, like sw360 backend, couchdb and nouveau containers.
+### Prerequisites
 
-Everything will run with an internal docker network called `sw360` and ports 3000 ( for frontend ) and 8080 ( for backend ) will be available
+- **Node.js** and **pnpm** installed
+- A running **SW360 Frontend** (default `http://localhost:3000`) and **backend API** (default `http://localhost:8080`).
+  - In headless mode, the frontend dev server starts automatically if it is not already running.
+  - For **UI mode** (`--ui`), start the dev server yourself first with `pnpm dev`.
+
+---
+
+### Setup
 
 ```bash
-docker compose up -d
+# 1. Install dependencies (if not already)
+pnpm install
+
+# 2. Install the Playwright browser (Chromium)
+npx playwright install chromium
+
 ```
+
+---
+
+### Running tests
+
+All commands use the `test:pw*` scripts defined in [`package.json`](../package.json),
+which wrap `npx playwright test`.
+
+#### Run everything (headless)
+
+```bash
+pnpm test:pw tests/e2e/ --project=chromium
+```
+For more detailed instructions on running SW360 Frontend testcases, see
+[README](./tests/README.md).
+
+
+

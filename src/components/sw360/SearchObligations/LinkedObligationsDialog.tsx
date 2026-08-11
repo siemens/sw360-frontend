@@ -13,15 +13,14 @@
 
 import { ColumnDef, getCoreRowModel, getExpandedRowModel, useReactTable } from '@tanstack/react-table'
 import { StatusCodes } from 'http-status-codes'
-import { signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { PaddedCell, SW360Table, TableSearch } from 'next-sw360'
 import { type JSX, useEffect, useMemo, useState } from 'react'
 import { Button, Modal, Spinner } from 'react-bootstrap'
 import { BsCheck2Square } from 'react-icons/bs'
 import { Embedded, ErrorDetails, LicensePayload, NestedRows, Obligation } from '@/object-types'
-import MessageService from '@/services/message.service'
-import { ApiUtils, CommonUtils } from '@/utils'
+import { ApiError, CommonUtils } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
 
 interface Props {
     show: boolean
@@ -37,7 +36,6 @@ type EmbeddedObligations = Embedded<Obligation, 'sw360:obligations'>
 
 const LinkedObligationsDialog = ({ show, setShow, licensePayload, setLicensePayload }: Props): JSX.Element => {
     const t = useTranslations('default')
-    const session = useSession()
     const [search, setSearch] = useState<{
         search: string
     }>({
@@ -55,13 +53,6 @@ const LinkedObligationsDialog = ({ show, setShow, licensePayload, setLicensePayl
             })
         }
     }
-    useEffect(() => {
-        if (session.status === 'unauthenticated') {
-            void signOut()
-        }
-    }, [
-        session,
-    ])
     const [obligations, setObligations] = useState<Obligation[]>([])
     const [checkAll, setCheckAll] = useState(false)
     const handleCloseDialog = () => {
@@ -174,7 +165,6 @@ const LinkedObligationsDialog = ({ show, setShow, licensePayload, setLicensePayl
     const [showProcessing, setShowProcessing] = useState(false)
 
     useEffect(() => {
-        if (session.status === 'loading') return
         const controller = new AbortController()
         const signal = controller.signal
 
@@ -185,7 +175,6 @@ const LinkedObligationsDialog = ({ show, setShow, licensePayload, setLicensePayl
 
         void (async () => {
             try {
-                if (CommonUtils.isNullOrUndefined(session.data)) return signOut()
                 const queryUrl = CommonUtils.createUrlWithParams(
                     `obligations`,
                     Object.fromEntries(
@@ -198,10 +187,12 @@ const LinkedObligationsDialog = ({ show, setShow, licensePayload, setLicensePayl
                         ]),
                     ),
                 )
-                const response = await ApiUtils.GET(queryUrl, session.data.user.access_token, signal)
+                const response = await ApiUtils.GET(queryUrl, signal)
                 if (response.status !== StatusCodes.OK) {
                     const err = (await response.json()) as ErrorDetails
-                    throw new Error(err.message)
+                    throw new ApiError(err.message, {
+                        status: response.status,
+                    })
                 }
 
                 const data = (await response.json()) as EmbeddedObligations
@@ -221,11 +212,7 @@ const LinkedObligationsDialog = ({ show, setShow, licensePayload, setLicensePayl
                         : [],
                 )
             } catch (error) {
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                    return
-                }
-                const message = error instanceof Error ? error.message : String(error)
-                MessageService.error(message)
+                ApiUtils.reportError(error)
             } finally {
                 clearTimeout(timeout)
                 setShowProcessing(false)
@@ -234,7 +221,6 @@ const LinkedObligationsDialog = ({ show, setShow, licensePayload, setLicensePayl
 
         return () => controller.abort()
     }, [
-        session,
         search,
     ])
 
@@ -319,7 +305,7 @@ const LinkedObligationsDialog = ({ show, setShow, licensePayload, setLicensePayl
                     {t('Cancel')}
                 </Button>
                 <Button
-                    className='btn-info'
+                    className='btn btn-info'
                     type='button'
                     onClick={handleClickSelectObligations}
                 >

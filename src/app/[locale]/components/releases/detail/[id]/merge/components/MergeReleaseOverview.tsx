@@ -11,9 +11,8 @@
 
 import { StatusCodes } from 'http-status-codes'
 import { useRouter } from 'next/navigation'
-import { getSession, signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
-import { ReactNode, useCallback, useEffect, useState } from 'react'
+import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react'
 import { Spinner } from 'react-bootstrap'
 import { AccessControl } from '@/components/AccessControl/AccessControl'
 import {
@@ -21,11 +20,16 @@ import {
     Embedded,
     ErrorDetails,
     MergeOrSplitActionType,
+    Release,
     ReleaseDetail,
+    ReleaseUsages,
     UserGroupType,
 } from '@/object-types'
 import MessageService from '@/services/message.service'
-import { ApiUtils, CommonUtils } from '@/utils'
+import { ApiError, CommonUtils } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
+import { dispatchSessionExpiredEvent } from '@/utils/sessionExpiry.utils'
+import MergeReleaseConfirmation from './MergeReleaseConfirmation'
 import MergeReleaseDataCheck from './MergeReleaseDataCheck'
 import MergeReleaseTable from './MergeReleaseTable'
 
@@ -62,17 +66,30 @@ function MergeReleaseOverview({
     const [targetRelease, setTargetRelease] = useState<null | ReleaseDetail>(null)
     const [sourceRelease, setSourceRelease] = useState<null | ReleaseDetail>(null)
     const [componentId, setComponentId] = useState<null | string>(null)
-    const [finalReleasePayload, setFinalReleasePayload] = useState<null | ReleaseDetail>(null)
+    const [finalReleasePayload, setFinalReleasePayload] = useState<null | Release>(null)
     const [error, setError] = useState<null | string>(null)
-    const [loading] = useState(false)
-    const { status, data: session } = useSession()
+    const [loading, setLoading] = useState(false)
+    const [sourceAttachments, setSourceAttachments] = useState<Array<Attachment>>([])
+    const [targetAttachments, setTargetAttachments] = useState<Array<Attachment>>([])
+    const [releaseUsages, setReleaseUsages] = useState<null | ReleaseUsages>(null)
+    const [heavyUsage, setHeavyUsage] = useState(false)
 
-    useEffect(() => {
-        if (status === 'unauthenticated') {
-            signOut()
+    const fetchData = useCallback(async (url: string) => {
+        const response = await ApiUtils.GET(url)
+        if (response.status === StatusCodes.OK) {
+            const data = (await response.json()) as EmbeddedAttachments
+            return data
+        } else if (response.status === StatusCodes.UNAUTHORIZED) {
+            return dispatchSessionExpiredEvent()
+        } else {
+            return undefined
         }
+    }, [])
+
+    const activeEntries = useMemo(() => {
+        return Object.entries(releaseUsages || {}).filter(([_, value]) => value > 0)
     }, [
-        status,
+        releaseUsages,
     ])
 
     useEffect(() => {
@@ -80,12 +97,10 @@ function MergeReleaseOverview({
         const signal = controller.signal
         ;(async () => {
             try {
-                const session = await getSession()
-                if (CommonUtils.isNullOrUndefined(session)) return signOut()
-                const response = await ApiUtils.GET(`releases/${releaseId}`, session.user.access_token, signal)
+                const response = await ApiUtils.GET(`releases/${releaseId}`, signal)
 
                 if (response.status === StatusCodes.UNAUTHORIZED) {
-                    return signOut()
+                    return dispatchSessionExpiredEvent()
                 } else if (response.status === StatusCodes.OK) {
                     const singleRelease = (await response.json()) as ReleaseDetail
                     const compId = singleRelease?._links['sw360:component']?.href.split('/').pop() ?? ''
@@ -97,15 +112,15 @@ function MergeReleaseOverview({
                     setTargetRelease(singleRelease)
                 } else {
                     const err = (await response.json()) as ErrorDetails
-                    throw new Error(err.message)
+                    throw new ApiError(err.message, {
+                        status: response.status,
+                    })
                 }
             } catch (error) {
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                    return
+                ApiUtils.reportError(error)
+                if (!(error instanceof ApiError && error.isAborted)) {
+                    router.push(`releases/${releaseId}`)
                 }
-                const message = error instanceof Error ? error.message : String(error)
-                MessageService.error(message)
-                router.push(`releases/${releaseId}`)
             }
         })()
 
@@ -114,41 +129,69 @@ function MergeReleaseOverview({
         releaseId,
     ])
 
-    const fetchData = useCallback(
-        async (url: string) => {
-            if (CommonUtils.isNullOrUndefined(session)) return
-            const response = await ApiUtils.GET(url, session.user.access_token)
-            if (response.status === StatusCodes.OK) {
-                const data = (await response.json()) as EmbeddedAttachments
-                return data
-            } else if (response.status === StatusCodes.UNAUTHORIZED) {
-                return signOut()
-            } else {
-                return undefined
+    useEffect(() => {
+        const controller = new AbortController()
+        const signal = controller.signal
+        ;(async () => {
+            try {
+                const response = await ApiUtils.GET(`releases/${releaseId}/usageInformationForMerge`, signal)
+                if (response.status === StatusCodes.UNAUTHORIZED) {
+                    return dispatchSessionExpiredEvent()
+                } else if (response.status === StatusCodes.OK) {
+                    const releaseUsage = (await response.json()) as ReleaseUsages
+                    setReleaseUsages(releaseUsage)
+                } else {
+                    const err = (await response.json()) as ErrorDetails
+                    throw new ApiError(err.message, {
+                        status: response.status,
+                    })
+                }
+            } catch (error) {
+                ApiUtils.reportError(error)
+                if (!(error instanceof ApiError && error.isAborted)) {
+                    router.push(`releases/${releaseId}`)
+                }
             }
-        },
-        [
-            session,
-        ],
-    )
+        })()
+
+        return () => controller.abort()
+    }, [
+        releaseId,
+    ])
+
+    useEffect(() => {
+        if (activeEntries.length !== 0) {
+            const isHeavy = activeEntries.some(([_, value]) => value > 1000)
+            setHeavyUsage(isHeavy)
+        }
+    }, [
+        activeEntries,
+    ])
 
     const checkMergeReleaseEligibility = async (): Promise<boolean> => {
         try {
-            const session = await getSession()
-            if (CommonUtils.isNullOrUndefined(session)) {
-                signOut()
-                return false
-            }
             if (!sourceRelease?.id) {
                 MessageService.error(t('No source release found'))
                 return false
             }
             const sourceAttachmentResponse = await fetchData(`releases/${sourceRelease.id}/attachments`)
+            setSourceAttachments(
+                sourceAttachmentResponse?._embedded?.['sw360:attachments']?.map(
+                    ({ _links, ...attachmentData }) => attachmentData,
+                ) ?? ([] as Attachment[]),
+            )
+
             const sourceAttachmentsList =
                 sourceAttachmentResponse?._embedded?.['sw360:attachments']?.filter(
                     (att: Attachment) => att.attachmentType === 'SOURCE',
                 ) ?? []
             const targetAttachmentResponse = await fetchData(`releases/${releaseId}/attachments`)
+            setTargetAttachments(
+                targetAttachmentResponse?._embedded?.['sw360:attachments']?.map(
+                    ({ _links, ...attachmentData }) => attachmentData,
+                ) ?? ([] as Attachment[]),
+            )
+
             const targetAttachmentsList =
                 targetAttachmentResponse?._embedded?.['sw360:attachments']?.filter(
                     (att: Attachment) => att.attachmentType === 'SOURCE',
@@ -165,13 +208,42 @@ function MergeReleaseOverview({
 
             return false
         } catch (error) {
-            if (error instanceof DOMException && error.name === 'AbortError') {
-                return false
+            ApiUtils.reportError(error)
+            if (!(error instanceof ApiError && error.isAborted)) {
+                router.push(`releases/${releaseId}`)
             }
-            const message = error instanceof Error ? error.message : String(error)
-            MessageService.error(message)
-            router.push(`releases/${releaseId}`)
             return false
+        }
+    }
+
+    const handleMergeRelease = async () => {
+        try {
+            setLoading(true)
+            const payload = {
+                ...(finalReleasePayload ?? {}),
+            }
+            delete payload.subscribers
+            payload.attachments = payload.attachments?.map((attachment) => ({
+                attachmentContentId: attachment.attachmentContentId,
+                filename: attachment.filename,
+            }))
+            const response = await ApiUtils.PATCH(
+                `releases/mergereleases?mergeTargetId=${targetRelease?.id}&mergeSourceId=${sourceRelease?.id}`,
+                payload,
+            )
+            if (response.status !== 200) {
+                const err = (await response.json()) as ErrorDetails
+                throw new ApiError(err.message, {
+                    status: response.status,
+                })
+            } else if (response.status === 200) {
+                MessageService.success(t('Releases merged successfully'))
+                router.push(`/components/releases/detail/${targetRelease?.id}`)
+            }
+        } catch (error) {
+            ApiUtils.reportError(error)
+        } finally {
+            setLoading(false)
         }
     }
 
@@ -187,21 +259,36 @@ function MergeReleaseOverview({
                     </div>
                     <div className='d-flex justify-content-between text-center mb-3'>
                         <div
-                            className={`p-2 border rounded-2 col-12 col-md ${mergeState === MergeOrSplitActionType.CHOOSE_SOURCE ? 'merge-split-active' : 'merge-split'}`}
+                            className={`p-2 border rounded-2 col-12 col-md
+                                    ${
+                                        mergeState === MergeOrSplitActionType.CHOOSE_SOURCE
+                                            ? 'merge-split-active'
+                                            : 'merge-split'
+                                    }`}
                             role='alert'
                         >
                             <h6 className='fw-bold'>1. {t('Choose source')}</h6>
                             <p>{t('Choose a release that should be merged into the current one')}</p>
                         </div>
                         <div
-                            className={`mx-4 p-2 border rounded-2 col-12 col-md ${mergeState === MergeOrSplitActionType.PROCESS_DATA ? 'merge-split-active' : 'merge-split'}`}
+                            className={`mx-4 p-2 border rounded-2 col-12 col-md
+                                    ${
+                                        mergeState === MergeOrSplitActionType.PROCESS_DATA
+                                            ? 'merge-split-active'
+                                            : 'merge-split'
+                                    }`}
                             role='alert'
                         >
                             <h6 className='fw-bold'>2. {t('Merge data')}</h6>
                             <p>{t('Merge data from source into target release')}</p>
                         </div>
                         <div
-                            className={`p-2 border rounded-2 col-12 col-md ${mergeState === MergeOrSplitActionType.CONFIRM ? 'merge-split-active' : 'merge-split'}`}
+                            className={`p-2 border rounded-2 col-12 col-md
+                                    ${
+                                        mergeState === MergeOrSplitActionType.CONFIRM
+                                            ? 'merge-split-active'
+                                            : 'merge-split'
+                                    }`}
                             role='alert'
                         >
                             <h6 className='fw-bold'>3. {t('Confirm')}</h6>
@@ -216,6 +303,29 @@ function MergeReleaseOverview({
                             {error}
                         </div>
                     )}
+                    {(mergeState === MergeOrSplitActionType.PROCESS_DATA ||
+                        mergeState === MergeOrSplitActionType.CONFIRM) &&
+                    activeEntries.length > 0 ? (
+                        <div
+                            className={`${heavyUsage ? 'subscriptionBoxDanger' : 'subscriptionBox'} my-2`}
+                            aria-disabled='true'
+                        >
+                            {t('The following documents will be affected')}
+                            <ul className='mt-2 mb-0'>
+                                {activeEntries.map(([key, value]) => (
+                                    <li key={key}>
+                                        <strong>{value}</strong> {` ${key}(s)`}
+                                    </li>
+                                ))}
+                            </ul>
+
+                            {heavyUsage && (
+                                <div className='mt-2 small font-weight-bold'>
+                                    {t('More than 1000 documents affected')}
+                                </div>
+                            )}
+                        </div>
+                    ) : null}
                     {mergeState === MergeOrSplitActionType.CHOOSE_SOURCE && (
                         <MergeReleaseTable
                             release={sourceRelease}
@@ -230,6 +340,15 @@ function MergeReleaseOverview({
                             sourceRelease={sourceRelease}
                             finalReleasePayload={finalReleasePayload}
                             setFinalReleasePayload={setFinalReleasePayload}
+                            targetAttachments={targetAttachments}
+                            sourceAttachments={sourceAttachments}
+                        />
+                    )}
+                    {mergeState === MergeOrSplitActionType.CONFIRM && (
+                        <MergeReleaseConfirmation
+                            targetRelease={targetRelease}
+                            sourceRelease={sourceRelease}
+                            finalReleasePayload={finalReleasePayload}
                         />
                     )}
                     <div className='d-flex justify-content-end mb-3'>
@@ -253,7 +372,7 @@ function MergeReleaseOverview({
                                 <button
                                     type='button'
                                     className='btn btn-primary'
-                                    // onClick={handleMergeRelease}
+                                    onClick={handleMergeRelease}
                                     disabled={loading}
                                 >
                                     {t('Finish')}

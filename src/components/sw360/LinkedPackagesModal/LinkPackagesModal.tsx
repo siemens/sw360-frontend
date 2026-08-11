@@ -12,53 +12,43 @@
 import { ColumnDef, getCoreRowModel, useReactTable } from '@tanstack/react-table'
 import { StatusCodes } from 'http-status-codes'
 import Link from 'next/link'
-import { signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { PageSizeSelector, SW360Table, TableFooter } from 'next-sw360'
 import { type JSX, useEffect, useMemo, useState } from 'react'
 import { Button, Col, Form, Modal, Row, Spinner } from 'react-bootstrap'
 import { BsInfoCircle } from 'react-icons/bs'
-import {
-    Embedded,
-    ErrorDetails,
-    LinkedPackageData,
-    Package,
-    PageableQueryParam,
-    PaginationMeta,
-    ProjectPayload,
-} from '@/object-types'
-import MessageService from '@/services/message.service'
-import { ApiUtils, CommonUtils } from '@/utils'
+import { Embedded, ErrorDetails, LinkedPackageData, Package, PageableQueryParam, PaginationMeta } from '@/object-types'
+import { ApiError, CommonUtils } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
 
-interface Props {
-    projectPayload: ProjectPayload
-    setProjectPayload: React.Dispatch<React.SetStateAction<ProjectPayload>>
+interface HasLinkedPackages {
+    linkedPackages?: Record<string, LinkedPackageData>
+    packageIds?: Record<string, LinkedPackageData>
+}
+interface Props<T extends HasLinkedPackages> {
+    payload: T
+    setPayload: React.Dispatch<React.SetStateAction<T>>
     show: boolean
     setShow: (show: boolean) => void
 }
 
 type EmbeddedPackages = Embedded<Package, 'sw360:packages'>
 
-export default function LinkPackagesModal({ projectPayload, setProjectPayload, show, setShow }: Props): JSX.Element {
+export default function LinkPackagesModal<T extends HasLinkedPackages>({
+    payload,
+    setPayload,
+    show,
+    setShow,
+}: Props<T>): JSX.Element {
     const t = useTranslations('default')
     const [linkPackages, setLinkPackages] = useState<Map<string, LinkedPackageData>>(new Map())
     const [searchText, setSearchText] = useState<string | undefined>(undefined)
     const [exactMatch, setExactMatch] = useState(false)
-    const session = useSession()
 
     useEffect(() => {
-        if (session.status === 'unauthenticated') {
-            console.log('hello')
-            void signOut()
-        }
+        setLinkPackages(new Map(Object.entries(payload.linkedPackages ?? payload.packageIds ?? {})))
     }, [
-        session,
-    ])
-
-    useEffect(() => {
-        setLinkPackages(new Map(Object.entries(projectPayload.packageIds ?? {})))
-    }, [
-        projectPayload,
+        payload,
     ])
 
     const columns = useMemo<ColumnDef<Package>[]>(
@@ -164,14 +154,13 @@ export default function LinkPackagesModal({ projectPayload, setProjectPayload, s
     const [showProcessing, setShowProcessing] = useState(false)
 
     useEffect(() => {
-        if (session.status === 'loading' || searchText === undefined) return
+        if (searchText === undefined) return
         const controller = new AbortController()
         const signal = controller.signal
         handleSearch(signal)
         return () => controller.abort()
     }, [
         pageableQueryParam,
-        session,
     ])
 
     const table = useReactTable({
@@ -213,8 +202,6 @@ export default function LinkPackagesModal({ projectPayload, setProjectPayload, s
 
     const handleSearch = async (signal?: AbortSignal) => {
         try {
-            if (CommonUtils.isNullOrUndefined(session.data)) return signOut()
-
             const queryUrl = CommonUtils.createUrlWithParams(
                 `packages`,
                 Object.fromEntries(
@@ -233,10 +220,12 @@ export default function LinkPackagesModal({ projectPayload, setProjectPayload, s
                     ]),
                 ),
             )
-            const response = await ApiUtils.GET(queryUrl, session.data.user.access_token, signal)
+            const response = await ApiUtils.GET(queryUrl, signal)
             if (response.status !== StatusCodes.OK) {
                 const err = (await response.json()) as ErrorDetails
-                throw new Error(err.message)
+                throw new ApiError(err.message, {
+                    status: response.status,
+                })
             }
 
             const data = (await response.json()) as EmbeddedPackages
@@ -247,20 +236,22 @@ export default function LinkPackagesModal({ projectPayload, setProjectPayload, s
                     : data['_embedded']['sw360:packages'],
             )
         } catch (error) {
-            if (error instanceof DOMException && error.name === 'AbortError') {
-                return
-            }
-            const message = error instanceof Error ? error.message : String(error)
-            MessageService.error(message)
+            ApiUtils.reportError(error)
         } finally {
             setShowProcessing(false)
         }
     }
 
-    const projectPayloadSetter = () => {
-        setProjectPayload({
-            ...projectPayload,
-            packageIds: Object.fromEntries(linkPackages),
+    const payloadSetter = () => {
+        setPayload({
+            ...payload,
+            ...(payload.linkedPackages !== undefined
+                ? {
+                      linkedPackages: Object.fromEntries(linkPackages),
+                  }
+                : {
+                      packageIds: Object.fromEntries(linkPackages),
+                  }),
         })
     }
 
@@ -270,15 +261,14 @@ export default function LinkPackagesModal({ projectPayload, setProjectPayload, s
         if (linkPackages.has(packageId)) {
             m.delete(packageId)
         } else {
+            const existingEntry = (payload.linkedPackages ?? payload.packageIds ?? {})[packageId]
             m.set(packageId, {
-                ...{
-                    packageId: packageId,
-                    name: pkg.name ?? '',
-                    version: pkg.version ?? '',
-                    licenseIds: pkg.licenseIds ?? [],
-                    packageManager: pkg.packageManager ?? '',
-                },
-                comment: '',
+                packageId: packageId,
+                name: pkg.name ?? '',
+                version: pkg.version ?? '',
+                licenseIds: pkg.licenseIds ?? [],
+                packageManager: pkg.packageManager ?? '',
+                comment: existingEntry?.comment ?? '',
             })
         }
         setLinkPackages(m)
@@ -316,7 +306,7 @@ export default function LinkPackagesModal({ projectPayload, setProjectPayload, s
                 <Modal.Title id='linked-projects-modal'>{t('Link Packages')}</Modal.Title>
             </Modal.Header>
             <Modal.Body>
-                <Form>
+                <Form onSubmit={(e) => e.preventDefault()}>
                     <Col>
                         <Row className='mb-3'>
                             <Col xs={6}>
@@ -351,6 +341,10 @@ export default function LinkPackagesModal({ projectPayload, setProjectPayload, s
                                     variant='secondary'
                                     onClick={() => {
                                         if (!searchText) setSearchText('')
+                                        setPageableQueryParam((prev) => ({
+                                            ...prev,
+                                            page: 0,
+                                        }))
                                         handleSearch()
                                     }}
                                 >
@@ -398,7 +392,7 @@ export default function LinkPackagesModal({ projectPayload, setProjectPayload, s
                 <Button
                     variant='primary'
                     onClick={() => {
-                        projectPayloadSetter()
+                        payloadSetter()
                         closeModal()
                     }}
                     disabled={linkPackages.size === 0}

@@ -1,0 +1,99 @@
+# Copyright (c) 2026 Gaurav Mishra <mishra.gaurav@siemens.com>. Part of the SW360 Frtonend Project.
+#
+# This program and the accompanying materials are made
+# available under the terms of the Eclipse Public License 2.0
+# which is available at https://www.eclipse.org/legal/epl-2.0/
+#
+# SPDX-License-Identifier: EPL-2.0
+# License-Filename: LICENSE
+
+name: Biome Auto-Migrate
+
+on:
+  pull_request:
+    paths:
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+
+permissions: read-all
+
+jobs:
+  migrate:
+    if: ${{ github.actor == 'dependabot[bot]' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@b09bb98e06d4d774595224525879c09bc6e98c40 # v2.20.1
+        with:
+          egress-policy: audit
+
+      - name: Checkout source code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Checkout the PR branch so commits can be pushed back to it.
+          ref: ${{ github.head_ref }}
+          # Needed to diff package.json between PR base/head commits.
+          fetch-depth: 0
+
+      - name: pnpm-setup
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          # Pinned to 11.11.0: A bare "11" resolves to 11.12.0, whose self-installer
+          # crashes action-setup with "Cannot use 'in' operator to search for
+          # 'integrity' in undefined". Need to Bump once pnpm/action-setup#276 is fixed upstream.
+          version: 11.11.0
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          # See here for caching with `yarn`, `bun` or other package managers https://github.com/actions/cache/blob/main/examples.md or you can leverage caching with actions/setup-node https://github.com/actions/setup-node
+          path: |
+            ${{ github.workspace }}/.next/cache
+          # Generate a new cache whenever packages or source files change.
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('**/package-lock.json') }}-${{ hashFiles('**/*.js', '**/*.jsx', '**/*.ts', '**/*.tsx') }}
+          # If source files changed but packages didn't, rebuild from a prior cache.
+          restore-keys: |
+            ${{ runner.os }}-nextjs-${{ hashFiles('**/package-lock.json') }}-
+
+      - name: 📦 Install dependencies
+        shell: bash
+        run: |
+          pnpm i
+
+      - name: Check if Biome was updated
+        id: check_biome
+        shell: bash
+        run: |
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+
+          if git diff "$BASE_SHA" "$HEAD_SHA" -- package.json | grep -q '@biomejs/biome'; then
+            echo "biome_updated=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "biome_updated=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run Biome migrate
+        if: steps.check_biome.outputs.biome_updated == 'true'
+        run: pnpm biome migrate --write
+
+      - name: Commit migration changes
+        if: steps.check_biome.outputs.biome_updated == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          if git diff --exit-code; then
+            echo "No changes from biome migrate"
+          else
+            git add biome.json
+            git commit -m "chore: Update biome schema to match CLI version"
+            git push
+          fi

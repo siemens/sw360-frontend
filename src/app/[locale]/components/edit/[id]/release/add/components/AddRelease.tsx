@@ -12,17 +12,20 @@
 'use client'
 
 import { StatusCodes } from 'http-status-codes'
-import { notFound, useRouter } from 'next/navigation'
-import { getSession, signOut, useSession } from 'next-auth/react'
+import { notFound, useRouter, useSearchParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
-import { PageButtonHeader, SideBar } from 'next-sw360'
+import { PageButtonHeader } from 'next-sw360'
 import { ReactNode, useEffect, useState } from 'react'
+import { Col, ListGroup, Row, Tab } from 'react-bootstrap'
 import AddCommercialDetails from '@/components/CommercialDetails/AddCommercialDetails'
 import LinkedReleases from '@/components/LinkedReleases/LinkedReleases'
+import { useConfigKeyValue } from '@/contexts'
 import {
+    ActionType,
     COTSDetails,
     CommonTabIds,
     Component,
+    ConfigKeys,
     Release,
     ReleaseDetail,
     ReleaseTabIds,
@@ -30,9 +33,10 @@ import {
     Vendor,
 } from '@/object-types'
 import MessageService from '@/services/message.service'
-import { ApiUtils, CommonUtils } from '@/utils'
+import { CommonUtils } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
+import { dispatchSessionExpiredEvent } from '@/utils/sessionExpiry.utils'
 import ReleaseAddSummary from './ReleaseAddSummary'
-import ReleaseAddTabs from './ReleaseAddTab'
 
 interface Props {
     componentId?: string
@@ -58,8 +62,8 @@ const cotsDetails: COTSDetails = {
 function AddRelease({ componentId }: Props): ReactNode {
     const t = useTranslations('default')
     const router = useRouter()
-    const [selectedTab, setSelectedTab] = useState<string>(CommonTabIds.SUMMARY)
-    const [tabList, setTabList] = useState(ReleaseAddTabs.WITHOUT_COMMERCIAL_DETAILS)
+    const isNestedReleaseEnabled = useConfigKeyValue(ConfigKeys.IS_NESTED_RELEASE_ENABLED)
+    const showLinkedReleases = isNestedReleaseEnabled !== 'false'
 
     const [releasePayload, setReleasePayload] = useState<Release>({
         name: '',
@@ -91,49 +95,115 @@ function AddRelease({ componentId }: Props): ReactNode {
         fullName: '',
     })
 
-    const [mainLicenses, setMainLicenses] = useState<{
-        [k: string]: string
-    }>({})
-
-    const [otherLicenses, setOtherLicenses] = useState<{
-        [k: string]: string
-    }>({})
-
     const [cotsResponsible, setCotsResponsible] = useState<{
         [k: string]: string
     }>({})
 
-    const { status } = useSession()
+    const [activeKey, setActiveKey] = useState(CommonTabIds.SUMMARY)
+    const params = useSearchParams()
+    const duplicateFromReleaseId = params.get('duplicate')
+    const [withCotsDetails, setWithCotsDetails] = useState(false)
+    const [sourceRelease, setSourceRelease] = useState<ReleaseDetail | null>(null)
 
     useEffect(() => {
-        if (status === 'unauthenticated') {
-            signOut()
-        }
+        const fragment = params.get('tab') ?? CommonTabIds.SUMMARY
+        setActiveKey(fragment)
     }, [
-        status,
+        params,
+    ])
+
+    const handleSelect = (key: string | null) => {
+        setActiveKey(key ?? CommonTabIds.SUMMARY)
+        const current = new URLSearchParams(params.toString())
+        current.set('tab', key ?? CommonTabIds.SUMMARY)
+        router.push(`?${current.toString()}`)
+    }
+
+    useEffect(() => {
+        if (!duplicateFromReleaseId) return
+        void (async () => {
+            try {
+                const response = await ApiUtils.GET(`releases/${duplicateFromReleaseId}`)
+                if (response.status === StatusCodes.UNAUTHORIZED) return dispatchSessionExpiredEvent()
+                else if (response.status !== StatusCodes.OK) return notFound()
+
+                const release: ReleaseDetail = (await response.json()) as ReleaseDetail
+                const releaseComponentId = CommonUtils.getIdFromUrl(release._links['sw360:component'].href)
+
+                if (!CommonUtils.isNullEmptyOrUndefinedArray(release._embedded?.['sw360:vendors'])) {
+                    const v = release._embedded['sw360:vendors']![0]
+                    setVendor({
+                        id: CommonUtils.getIdFromUrl(v._links?.self?.href ?? ''),
+                        fullName: v.fullName ?? '',
+                    })
+                }
+
+                const vendorId = !CommonUtils.isNullEmptyOrUndefinedArray(release._embedded?.['sw360:vendors'])
+                    ? CommonUtils.getIdFromUrl(release._embedded['sw360:vendors']![0]._links?.self?.href ?? '')
+                    : null
+
+                setReleasePayload((prev) => ({
+                    ...prev,
+                    name: release.name,
+                    cpeid: release.cpeId ?? '',
+                    version: release.version,
+                    componentId: releaseComponentId,
+                    releaseDate: release.releaseDate ?? '',
+                    externalIds: release.externalIds ?? null,
+                    additionalData: release.additionalData ?? null,
+                    mainlineState: release.mainlineState ?? 'OPEN',
+                    roles: release.roles ?? null,
+                    mainLicenseIds: release.mainLicenseIds ?? null,
+                    otherLicenseIds: release.otherLicenseIds ?? null,
+                    vendorId,
+                    languages: release.languages ?? null,
+                    operatingSystems: release.operatingSystems ?? null,
+                    softwarePlatforms: release.softwarePlatforms ?? null,
+                    sourceCodeDownloadurl: release.sourceCodeDownloadurl ?? '',
+                    binaryDownloadurl: release.binaryDownloadurl ?? '',
+                    repository: release.repository ?? null,
+                    releaseIdToRelationship: release.releaseIdToRelationship ?? null,
+                    contributors: release._embedded?.['sw360:contributors']?.map((u) => u.email) ?? null,
+                    moderators: release._embedded?.['sw360:moderators']?.map((u) => u.email) ?? null,
+                }))
+
+                setSourceRelease(release)
+            } catch (e) {
+                ApiUtils.reportError(e)
+            }
+        })()
+    }, [
+        duplicateFromReleaseId,
     ])
 
     useEffect(() => {
+        if (!componentId) return
         void (async () => {
             try {
-                const session = await getSession()
-                if (CommonUtils.isNullOrUndefined(session)) return signOut()
-                const response = await ApiUtils.GET(`components/${componentId}`, session.user.access_token)
+                const response = await ApiUtils.GET(`components/${componentId}`)
                 if (response.status === StatusCodes.UNAUTHORIZED) {
-                    return signOut()
+                    return dispatchSessionExpiredEvent()
                 } else if (response.status !== StatusCodes.OK) {
                     return notFound()
                 }
                 const component: Component = (await response.json()) as Component
+                const defaultVendor = component._embedded?.defaultVendor
+                if (defaultVendor) {
+                    setVendor({
+                        id: component.defaultVendorId,
+                        fullName: defaultVendor.fullName ?? '',
+                    })
+                }
                 setReleasePayload({
                     ...releasePayload,
                     name: component.name,
+                    vendorId: component.defaultVendorId ?? releasePayload.vendorId,
                 })
                 if (component.componentType === 'COTS') {
-                    setTabList(ReleaseAddTabs.WITH_COMMERCIAL_DETAILS)
+                    setWithCotsDetails(true)
                 }
             } catch (e) {
-                console.error(e)
+                ApiUtils.reportError(e)
             }
         })()
     }, [
@@ -141,9 +211,7 @@ function AddRelease({ componentId }: Props): ReactNode {
     ])
 
     const submit = async () => {
-        const session = await getSession()
-        if (CommonUtils.isNullOrUndefined(session)) return signOut()
-        const response = await ApiUtils.POST('releases', releasePayload, session.user.access_token)
+        const response = await ApiUtils.POST('releases', releasePayload)
         if (response.status === StatusCodes.CREATED) {
             const release = (await response.json()) as ReleaseDetail
             MessageService.success(t('Release is created'))
@@ -172,67 +240,81 @@ function AddRelease({ componentId }: Props): ReactNode {
 
     return (
         <>
-            <div
-                className='container'
-                style={{
-                    maxWidth: '98vw',
-                    marginTop: '10px',
-                }}
-            >
-                <div className='row'>
-                    <div className='col-2 sidebar'>
-                        <SideBar
-                            selectedTab={selectedTab}
-                            setSelectedTab={setSelectedTab}
-                            tabList={tabList}
-                        />
-                    </div>
-                    <div className='col'>
-                        <div
-                            className='row'
-                            style={{
-                                marginBottom: '20px',
-                            }}
+            <div className='container page-content'>
+                <Tab.Container
+                    activeKey={activeKey}
+                    onSelect={(k) => handleSelect(k)}
+                >
+                    <Row>
+                        <Col
+                            sm={2}
+                            className='me-3'
                         >
-                            <PageButtonHeader buttons={headerButtons}></PageButtonHeader>
-                        </div>
-                        <div
-                            className='row'
-                            hidden={selectedTab !== CommonTabIds.SUMMARY ? true : false}
-                        >
-                            <ReleaseAddSummary
-                                releasePayload={releasePayload}
-                                setReleasePayload={setReleasePayload}
-                                vendor={vendor}
-                                setVendor={setVendor}
-                                mainLicenses={mainLicenses}
-                                setMainLicenses={setMainLicenses}
-                                otherLicenses={otherLicenses}
-                                setOtherLicenses={setOtherLicenses}
-                            />
-                        </div>
-                        <div
-                            className='row'
-                            hidden={selectedTab !== ReleaseTabIds.LINKED_RELEASES ? true : false}
-                        >
-                            <LinkedReleases
-                                releasePayload={releasePayload}
-                                setReleasePayload={setReleasePayload}
-                            />
-                        </div>
-                        <div
-                            className='row'
-                            hidden={selectedTab !== ReleaseTabIds.COMMERCIAL_DETAILS ? true : false}
-                        >
-                            <AddCommercialDetails
-                                releasePayload={releasePayload}
-                                setReleasePayload={setReleasePayload}
-                                cotsResponsible={cotsResponsible}
-                                setCotsResponsible={setCotsResponsible}
-                            />
-                        </div>
-                    </div>
-                </div>
+                            <ListGroup>
+                                <ListGroup.Item
+                                    action
+                                    eventKey={CommonTabIds.SUMMARY}
+                                >
+                                    <div className='my-2'>{t('Summary')}</div>
+                                </ListGroup.Item>
+                                {showLinkedReleases && (
+                                    <ListGroup.Item
+                                        action
+                                        eventKey={ReleaseTabIds.LINKED_RELEASES}
+                                    >
+                                        <div className='my-2'>{t('Linked Releases')}</div>
+                                    </ListGroup.Item>
+                                )}
+                                {withCotsDetails && (
+                                    <ListGroup.Item
+                                        action
+                                        eventKey={ReleaseTabIds.COMMERCIAL_DETAILS}
+                                    >
+                                        <div className='my-2'>{t('Commercial Details')}</div>
+                                    </ListGroup.Item>
+                                )}
+                            </ListGroup>
+                        </Col>
+                        <Col>
+                            <Row>
+                                <PageButtonHeader buttons={headerButtons}></PageButtonHeader>
+                            </Row>
+                            <Row>
+                                <Tab.Content>
+                                    <Tab.Pane eventKey={CommonTabIds.SUMMARY}>
+                                        <ReleaseAddSummary
+                                            releasePayload={releasePayload}
+                                            setReleasePayload={setReleasePayload}
+                                            vendor={vendor}
+                                            setVendor={setVendor}
+                                            releaseDetail={sourceRelease ?? undefined}
+                                        />
+                                    </Tab.Pane>
+                                    {showLinkedReleases && (
+                                        <Tab.Pane eventKey={ReleaseTabIds.LINKED_RELEASES}>
+                                            <LinkedReleases
+                                                actionType={duplicateFromReleaseId ? ActionType.EDIT : ActionType.ADD}
+                                                release={sourceRelease ?? undefined}
+                                                releasePayload={releasePayload}
+                                                setReleasePayload={setReleasePayload}
+                                            />
+                                        </Tab.Pane>
+                                    )}
+                                    {withCotsDetails && (
+                                        <Tab.Pane eventKey={ReleaseTabIds.COMMERCIAL_DETAILS}>
+                                            <AddCommercialDetails
+                                                releasePayload={releasePayload}
+                                                setReleasePayload={setReleasePayload}
+                                                cotsResponsible={cotsResponsible}
+                                                setCotsResponsible={setCotsResponsible}
+                                            />
+                                        </Tab.Pane>
+                                    )}
+                                </Tab.Content>
+                            </Row>
+                        </Col>
+                    </Row>
+                </Tab.Container>
             </div>
         </>
     )

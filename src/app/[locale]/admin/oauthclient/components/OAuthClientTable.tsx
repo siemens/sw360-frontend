@@ -8,6 +8,7 @@
 // SPDX-License-Identifier: EPL-2.0
 // License-Filename: LICENSE
 
+import { encode } from 'he'
 import { useTranslations } from 'next-intl'
 import React, { type JSX, useMemo, useState } from 'react'
 import { Button, Form } from 'react-bootstrap'
@@ -143,7 +144,7 @@ export default function OAuthClientTable({ clients, updateClient, deleteClient }
             ),
             details: `
                 <div class="details-row">
-                    <p>Client Secret: ${client.client_secret}</p>
+                    <p>Client Secret: ${encode(client.client_secret)}</p>
                     <p>Access Token Validity: ${formatTime(client.access_token_validity)} (${client.access_token_validity} seconds)</p>
                     <p>Refresh Token Validity: ${formatTime(client.refresh_token_validity)} (${client.refresh_token_validity} seconds)</p>
                 </div>
@@ -211,9 +212,6 @@ export default function OAuthClientTable({ clients, updateClient, deleteClient }
                             </button>
                         </th>
                         <th
-                            style={{
-                                width: '30%',
-                            }}
                             onClick={() => handleSort('description')}
                             className='text-start align-middle'
                         >
@@ -242,9 +240,6 @@ export default function OAuthClientTable({ clients, updateClient, deleteClient }
                             </span>
                         </th>
                         <th
-                            style={{
-                                width: '25%',
-                            }}
                             onClick={() => handleSort('clientId')}
                             className='text-start align-middle'
                         >
@@ -273,9 +268,6 @@ export default function OAuthClientTable({ clients, updateClient, deleteClient }
                             </span>
                         </th>
                         <th
-                            style={{
-                                width: '15%',
-                            }}
                             onClick={() => handleSort('authorities')}
                             className='text-start align-middle'
                         >
@@ -304,9 +296,6 @@ export default function OAuthClientTable({ clients, updateClient, deleteClient }
                             </span>
                         </th>
                         <th
-                            style={{
-                                width: '15%',
-                            }}
                             onClick={() => handleSort('scope')}
                             className='text-start align-middle'
                         >
@@ -334,14 +323,7 @@ export default function OAuthClientTable({ clients, updateClient, deleteClient }
                                 </span>
                             </span>
                         </th>
-                        <th
-                            style={{
-                                width: '10%',
-                            }}
-                            className='align-middle'
-                        >
-                            {t('Actions')}
-                        </th>
+                        <th className='align-middle'>{t('Actions')}</th>
                     </tr>
                 </thead>
                 <tbody>

@@ -14,15 +14,22 @@
 import { ColumnDef, getCoreRowModel, SortingState, useReactTable } from '@tanstack/react-table'
 import { StatusCodes } from 'http-status-codes'
 import Link from 'next/link'
-import { signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { type JSX, useEffect, useMemo, useState } from 'react'
 import { Alert, Button, Col, Form, Modal, OverlayTrigger, Row, Spinner, Tooltip } from 'react-bootstrap'
-import { BsCheck2 } from 'react-icons/bs'
+import { BsCheck2, BsInfoCircle } from 'react-icons/bs'
 import { PageSizeSelector, SW360Table, TableFooter } from '@/components/sw360'
-import { Embedded, ErrorDetails, PageableQueryParam, PaginationMeta, Project, ReleaseDetail } from '@/object-types'
-import MessageService from '@/services/message.service'
-import { ApiUtils, CommonUtils } from '@/utils'
+import {
+    Embedded,
+    ErrorDetails,
+    PageableQueryParam,
+    PaginationMeta,
+    Project,
+    ReleaseDetail,
+    SearchResult,
+} from '@/object-types'
+import { ApiError, CommonUtils } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
 
 interface Props {
     releaseId?: string
@@ -31,6 +38,7 @@ interface Props {
 }
 
 type EmbeddedProjects = Embedded<Project, 'sw360:projects'>
+type EmbeddedSearchResults = Embedded<SearchResult, 'sw360:searchResults'>
 
 const Capitalize = (text: string) =>
     text.split('_').reduce((s, c) => s + ' ' + (c.charAt(0) + c.substring(1).toLocaleLowerCase()), '')
@@ -40,18 +48,11 @@ const LinkReleaseToProjectModal = ({ releaseId, show, setShow }: Props): JSX.Ele
     const [linkingReleaseName, setLinkingReleaseName] = useState('')
     const [withLinkedProject, setWithLinkedProject] = useState(true)
     const [showMessage, setShowMessage] = useState(false)
+    const [exactMatch, setExactMatch] = useState(false)
     const [searchText, setSearchText] = useState<string | undefined>(undefined)
+    const [byNameOnly, setByNameOnly] = useState(true)
     const [selectedProject, setSelectedProject] = useState<Project>()
     const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([])
-    const session = useSession()
-
-    useEffect(() => {
-        if (session.status === 'unauthenticated') {
-            void signOut()
-        }
-    }, [
-        session,
-    ])
 
     const columns = useMemo<ColumnDef<Project>[]>(
         () => [
@@ -193,7 +194,7 @@ const LinkReleaseToProjectModal = ({ releaseId, show, setShow }: Props): JSX.Ele
     const [pageableQueryParam, setPageableQueryParam] = useState<PageableQueryParam>({
         page: 0,
         page_entries: 10,
-        sort: 'name,asc',
+        sort: 'score,asc',
     })
     const [paginationMeta, setPaginationMeta] = useState<PaginationMeta | undefined>({
         size: 0,
@@ -211,14 +212,13 @@ const LinkReleaseToProjectModal = ({ releaseId, show, setShow }: Props): JSX.Ele
     const [showProcessing, setShowProcessing] = useState(false)
 
     useEffect(() => {
-        if (session.status === 'loading' || searchText === undefined) return
+        if (searchText === undefined) return
         const controller = new AbortController()
         const signal = controller.signal
         handleSearch(signal)
         return () => controller.abort()
     }, [
         pageableQueryParam,
-        session,
     ])
 
     const table = useReactTable({
@@ -294,44 +294,88 @@ const LinkReleaseToProjectModal = ({ releaseId, show, setShow }: Props): JSX.Ele
 
     const handleSearch = async (signal?: AbortSignal) => {
         try {
-            if (CommonUtils.isNullOrUndefined(session.data)) return signOut()
+            setShowProcessing(true)
 
-            const queryUrl = CommonUtils.createUrlWithParams(
-                `projects`,
-                Object.fromEntries(
-                    Object.entries({
-                        ...pageableQueryParam,
-                        ...(searchText && searchText !== ''
-                            ? {
-                                  searchText: searchText,
-                              }
-                            : {}),
-                        allDetails: true,
-                    }).map(([key, value]) => [
-                        key,
-                        String(value),
-                    ]),
-                ),
-            )
-            const response = await ApiUtils.GET(queryUrl, session.data.user.access_token, signal)
-            if (response.status !== StatusCodes.OK) {
-                const err = (await response.json()) as ErrorDetails
-                throw new Error(err.message)
+            if (byNameOnly || CommonUtils.isNullEmptyOrUndefinedString(searchText)) {
+                // Search by name only using /projects endpoint
+                const queryUrl = CommonUtils.createUrlWithParams(
+                    `projects`,
+                    Object.fromEntries(
+                        Object.entries({
+                            ...pageableQueryParam,
+                            ...(searchText && searchText !== ''
+                                ? {
+                                      name: searchText,
+                                      luceneSearch: !exactMatch,
+                                  }
+                                : {}),
+                            allDetails: true,
+                        }).map(([key, value]) => [
+                            key,
+                            String(value),
+                        ]),
+                    ),
+                )
+                const response = await ApiUtils.GET(queryUrl, signal)
+                if (response.status !== StatusCodes.OK) {
+                    const err = (await response.json()) as ErrorDetails
+                    throw new ApiError(err.message, {
+                        status: response.status,
+                    })
+                }
+
+                const data = (await response.json()) as EmbeddedProjects
+                setPaginationMeta(data.page)
+                setProjectData(
+                    CommonUtils.isNullOrUndefined(data['_embedded']['sw360:projects'])
+                        ? []
+                        : data['_embedded']['sw360:projects'],
+                )
+            } else {
+                // Full-text search using /search endpoint
+                const params = new URLSearchParams()
+                if (searchText && searchText !== '') {
+                    params.append('searchText', searchText)
+                }
+                params.append('typeMasks', 'project')
+                if (!exactMatch) {
+                    params.append('typeMasks', 'document')
+                }
+                Object.entries(pageableQueryParam)
+                    .filter(([k]) => k !== 'sort')
+                    .forEach(([key, value]) => params.append(key, String(value)))
+
+                const response = await ApiUtils.GET(`search?${params.toString()}`, signal)
+                if (response.status !== StatusCodes.OK && response.status !== StatusCodes.NO_CONTENT) {
+                    const err = (await response.json()) as ErrorDetails
+                    throw new ApiError(err.message, {
+                        status: response.status,
+                    })
+                }
+
+                const data = (await response.json()) as EmbeddedSearchResults
+                setPaginationMeta(data.page)
+
+                // Fetch full project details for search results
+                const searchResults = data['_embedded']?.['sw360:searchResults'] ?? []
+                const projectIds = searchResults.filter((r) => r.type === 'project').map((r) => r.id)
+
+                if (projectIds.length === 0) {
+                    setProjectData([])
+                    return
+                }
+
+                // Fetch full details for each project
+                const projectPromises = projectIds.map((id) =>
+                    ApiUtils.GET(`projects/${id}`, signal)
+                        .then((res) => (res.status === StatusCodes.OK ? res.json() : null))
+                        .catch(() => null),
+                )
+                const projects = (await Promise.all(projectPromises)).filter((p): p is Project => p !== null)
+                setProjectData(projects)
             }
-
-            const data = (await response.json()) as EmbeddedProjects
-            setPaginationMeta(data.page)
-            setProjectData(
-                CommonUtils.isNullOrUndefined(data['_embedded']['sw360:projects'])
-                    ? []
-                    : data['_embedded']['sw360:projects'],
-            )
         } catch (error) {
-            if (error instanceof DOMException && error.name === 'AbortError') {
-                return
-            }
-            const message = error instanceof Error ? error.message : String(error)
-            MessageService.error(message)
+            ApiUtils.reportError(error)
         } finally {
             setShowProcessing(false)
         }
@@ -361,27 +405,22 @@ const LinkReleaseToProjectModal = ({ releaseId, show, setShow }: Props): JSX.Ele
 
     const handleLinkToProject = async () => {
         try {
-            if (CommonUtils.isNullOrUndefined(session.data)) return signOut()
-
             const response = await ApiUtils.PATCH(
                 `projects/${selectedProject?._links.self.href.split('/').at(-1)}/releases`,
                 [
                     releaseId,
                 ],
-                session.data.user.access_token,
             )
             if (response.status !== StatusCodes.CREATED) {
                 const err = (await response.json()) as ErrorDetails
-                throw new Error(err.message)
+                throw new ApiError(err.message, {
+                    status: response.status,
+                })
             }
 
             setShowMessage(true)
         } catch (error) {
-            if (error instanceof DOMException && error.name === 'AbortError') {
-                return
-            }
-            const message = error instanceof Error ? error.message : String(error)
-            MessageService.error(message)
+            ApiUtils.reportError(error)
         }
     }
 
@@ -390,12 +429,12 @@ const LinkReleaseToProjectModal = ({ releaseId, show, setShow }: Props): JSX.Ele
     const getLinkedProjects = async (signal: AbortSignal) => {
         setShowLinkedProjectsProcessing(true)
         try {
-            if (CommonUtils.isNullOrUndefined(session.data)) return signOut()
-
-            const response = await ApiUtils.GET(`releases/usedBy/${releaseId}`, session.data.user.access_token, signal)
+            const response = await ApiUtils.GET(`releases/usedBy/${releaseId}`, signal)
             if (response.status !== StatusCodes.OK) {
                 const err = (await response.json()) as ErrorDetails
-                throw new Error(err.message)
+                throw new ApiError(err.message, {
+                    status: response.status,
+                })
             }
 
             const data = (await response.json()) as EmbeddedProjects
@@ -405,18 +444,14 @@ const LinkReleaseToProjectModal = ({ releaseId, show, setShow }: Props): JSX.Ele
                     : data['_embedded']['sw360:projects'].map((p) => p._links.self.href.split('/').at(-1) ?? ''),
             )
         } catch (error) {
-            if (error instanceof DOMException && error.name === 'AbortError') {
-                return
-            }
-            const message = error instanceof Error ? error.message : String(error)
-            MessageService.error(message)
+            ApiUtils.reportError(error)
         } finally {
             setShowLinkedProjectsProcessing(false)
         }
     }
 
     useEffect(() => {
-        if (session.status === 'loading' || !withLinkedProject || !show) return
+        if (!withLinkedProject || !show) return
         const controller = new AbortController()
         const signal = controller.signal
         void getLinkedProjects(signal)
@@ -427,27 +462,22 @@ const LinkReleaseToProjectModal = ({ releaseId, show, setShow }: Props): JSX.Ele
     ])
 
     useEffect(() => {
-        if (session.status === 'loading') return
         const controller = new AbortController()
         const signal = controller.signal
         void (async () => {
             try {
-                if (CommonUtils.isNullOrUndefined(session.data)) return signOut()
-
-                const response = await ApiUtils.GET(`releases/${releaseId}`, session.data.user.access_token, signal)
+                const response = await ApiUtils.GET(`releases/${releaseId}`, signal)
                 if (response.status !== StatusCodes.OK) {
                     const err = (await response.json()) as ErrorDetails
-                    throw new Error(err.message)
+                    throw new ApiError(err.message, {
+                        status: response.status,
+                    })
                 }
 
                 const data = (await response.json()) as ReleaseDetail
                 setLinkingReleaseName(data.name)
             } catch (error) {
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                    return
-                }
-                const message = error instanceof Error ? error.message : String(error)
-                MessageService.error(message)
+                ApiUtils.reportError(error)
             }
         })()
         return () => controller.abort()
@@ -457,7 +487,7 @@ const LinkReleaseToProjectModal = ({ releaseId, show, setShow }: Props): JSX.Ele
 
     return (
         <>
-            {session.status === 'authenticated' && (
+            {
                 <Modal
                     show={show}
                     onHide={handleCloseDialog}
@@ -508,13 +538,83 @@ const LinkReleaseToProjectModal = ({ releaseId, show, setShow }: Props): JSX.Ele
                                         }}
                                     />
                                 </Col>
+                                <Col xs='auto'>
+                                    <Form.Group>
+                                        <Form.Check
+                                            inline
+                                            name='exact-match'
+                                            type='checkbox'
+                                            id='exact-match'
+                                            checked={exactMatch}
+                                            onChange={() => setExactMatch(!exactMatch)}
+                                        />
+                                        <Form.Label className='pt-2'>
+                                            {t('Restricted Search')}{' '}
+                                            <OverlayTrigger
+                                                overlay={
+                                                    <Tooltip>
+                                                        <div>
+                                                            {t(
+                                                                'In case By Name Only is unchecked checking this will search for elements with name and description matching the input Otherwise the entire document will be searched',
+                                                            )}
+                                                        </div>
+                                                        {t(
+                                                            'In case By Name Only is checked Checking this will search for elements with name exactly matching the input',
+                                                        )}
+                                                        .
+                                                    </Tooltip>
+                                                }
+                                                placement='top'
+                                            >
+                                                <sup>
+                                                    <BsInfoCircle size={20} />
+                                                </sup>
+                                            </OverlayTrigger>
+                                        </Form.Label>
+                                    </Form.Group>
+                                </Col>
+                                <Col xs='auto'>
+                                    <Form.Group>
+                                        <Form.Check
+                                            inline
+                                            name='by-name-only'
+                                            type='checkbox'
+                                            id='by-name-only'
+                                            checked={byNameOnly}
+                                            onChange={() => setByNameOnly(!byNameOnly)}
+                                        />
+                                        <Form.Label className='pt-2'>
+                                            {t('By Name Only')}{' '}
+                                            <OverlayTrigger
+                                                overlay={
+                                                    <Tooltip>
+                                                        {t(
+                                                            'The search result will display elements with name matching the input',
+                                                        )}
+                                                    </Tooltip>
+                                                }
+                                                placement='top'
+                                            >
+                                                <sup>
+                                                    <BsInfoCircle size={20} />
+                                                </sup>
+                                            </OverlayTrigger>
+                                        </Form.Label>
+                                    </Form.Group>
+                                </Col>
                                 <Col lg='3'>
                                     <Button
                                         variant='secondary'
                                         onClick={() => {
                                             if (!searchText) setSearchText('')
+                                            setPageableQueryParam((prev) => ({
+                                                ...prev,
+                                                page: 0,
+                                                sort: 'score,asc',
+                                            }))
                                             handleSearch()
                                         }}
+                                        className='mt-2'
                                     >
                                         {t('Search')}
                                     </Button>
@@ -561,7 +661,6 @@ const LinkReleaseToProjectModal = ({ releaseId, show, setShow }: Props): JSX.Ele
                     <Modal.Footer className='justify-content-end'>
                         {showMessage === true ? (
                             <Button
-                                className='delete-btn'
                                 variant='primary'
                                 onClick={handleCloseDialog}
                             >
@@ -571,7 +670,6 @@ const LinkReleaseToProjectModal = ({ releaseId, show, setShow }: Props): JSX.Ele
                         ) : (
                             <>
                                 <Button
-                                    className='delete-btn'
                                     variant='light'
                                     onClick={handleCloseDialog}
                                 >
@@ -590,7 +688,7 @@ const LinkReleaseToProjectModal = ({ releaseId, show, setShow }: Props): JSX.Ele
                         )}
                     </Modal.Footer>
                 </Modal>
-            )}
+            }
         </>
     )
 }

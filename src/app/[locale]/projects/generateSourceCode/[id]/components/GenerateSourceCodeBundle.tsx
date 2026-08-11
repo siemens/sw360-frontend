@@ -13,7 +13,6 @@ import { ColumnDef, ExpandedState, getCoreRowModel, getExpandedRowModel, useReac
 import { StatusCodes } from 'http-status-codes'
 import Link from 'next/link'
 import { notFound, useSearchParams } from 'next/navigation'
-import { getSession, signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { PaddedCell, SW360Table } from 'next-sw360'
 import { Dispatch, ReactNode, SetStateAction, useEffect, useMemo, useState } from 'react'
@@ -34,7 +33,8 @@ import {
 } from '@/object-types'
 import DownloadService from '@/services/download.service'
 import MessageService from '@/services/message.service'
-import { ApiUtils, CommonUtils } from '@/utils'
+import { ApiError, CommonUtils } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
 
 type LinkedProjects = Embedded<Project, 'sw360:projects'>
 
@@ -63,15 +63,6 @@ function GenerateSourceCodeBundle({
     })
     const [loading, setLoading] = useState(false)
     const [hideWithUsage, setHideWithUsage] = useState(false)
-
-    const session = useSession()
-    useEffect(() => {
-        if (session.status === 'unauthenticated') {
-            void signOut()
-        }
-    }, [
-        session,
-    ])
 
     const [expandedState, setExpandedState] = useState<ExpandedState>({})
     const [showProcessing, setShowProcessing] = useState(false)
@@ -116,26 +107,24 @@ function GenerateSourceCodeBundle({
             if (Object.hasOwn(searchParams, 'withSubProjects') === false) {
                 return
             }
-            const session = await getSession()
-            if (CommonUtils.isNullOrUndefined(session)) {
-                MessageService.error(t('Something went wrong'))
-                return signOut()
-            }
-            const response = await ApiUtils.POST(
-                `projects/${projectId}/saveAttachmentUsages`,
-                saveUsagesPayload,
-                session.user.access_token,
-            )
-            if (response.status !== StatusCodes.CREATED) {
+            const response = await ApiUtils.POST(`projects/${projectId}/saveAttachmentUsages`, saveUsagesPayload)
+            if (response.status === StatusCodes.CREATED || response.status === StatusCodes.OK) {
+                const currentDate = new Date().toISOString().split('T')[0]
+                DownloadService.download(
+                    `reports?withlinkedreleases=false&projectId=${projectId}&module=licenseResourceBundle&excludeReleaseVersion=false&withSubProject=${searchParams.withSubProjects}`,
+                    `SourceCodeBundle-${currentDate}.zip`,
+                )
+            } else if (response.status === StatusCodes.FORBIDDEN) {
+                MessageService.warn(t('Could not save the attachment usages'))
+                const currentDate = new Date().toISOString().split('T')[0]
+                DownloadService.download(
+                    `reports?withlinkedreleases=false&projectId=${projectId}&module=licenseResourceBundle&excludeReleaseVersion=false&withSubProject=${searchParams.withSubProjects}`,
+                    `SourceCodeBundle-${currentDate}.zip`,
+                )
+            } else {
                 MessageService.error(t('Something went wrong'))
                 return notFound()
             }
-            const currentDate = new Date().toISOString().split('T')[0]
-            DownloadService.download(
-                `reports?withlinkedreleases=false&projectId=${projectId}&module=licenseResourceBundle&excludeReleaseVersion=false&withSubProject=${searchParams.withSubProjects}`,
-                session,
-                `SourceCodeBundle-${currentDate}.zip`,
-            )
         } catch (e) {
             console.error(e)
         } finally {
@@ -144,7 +133,6 @@ function GenerateSourceCodeBundle({
     }
 
     useEffect(() => {
-        if (session.status === 'loading') return
         const controller = new AbortController()
         const signal = controller.signal
 
@@ -155,32 +143,25 @@ function GenerateSourceCodeBundle({
 
         void (async () => {
             try {
-                if (CommonUtils.isNullOrUndefined(session.data)) return signOut()
                 const searchParams = Object.fromEntries(params)
                 if (Object.hasOwn(searchParams, 'withSubProjects') === false) {
                     return
                 }
                 const requests = [
-                    ApiUtils.GET(`projects/${projectId}`, session.data.user.access_token, signal),
+                    ApiUtils.GET(`projects/${projectId}`, signal),
                 ]
                 if (searchParams.withSubProjects === 'true') {
                     requests.push(
                         ApiUtils.GET(
                             `projects/${projectId}/attachmentUsage?transitive=true&filter=withSourceAttachment`,
-                            session.data.user.access_token,
                             signal,
                         ),
-                        ApiUtils.GET(
-                            `projects/${projectId}/linkedProjects?transitive=true`,
-                            session.data.user.access_token,
-                            signal,
-                        ),
+                        ApiUtils.GET(`projects/${projectId}/linkedProjects?transitive=true`, signal),
                     )
                 } else {
                     requests.push(
                         ApiUtils.GET(
                             `projects/${projectId}/attachmentUsage?transitive=false&filter=withSourceAttachment`,
-                            session.data.user.access_token,
                             signal,
                         ),
                     )
@@ -189,7 +170,9 @@ function GenerateSourceCodeBundle({
                 responses.map(async (r) => {
                     if (r.status !== StatusCodes.OK) {
                         const err = (await r.json()) as ErrorDetails
-                        throw new Error(err.message)
+                        throw new ApiError(err.message, {
+                            status: r.status,
+                        })
                     }
                 })
 
@@ -215,7 +198,7 @@ function GenerateSourceCodeBundle({
 
                 for (const r of attachmentUsages['_embedded']['sw360:release']) {
                     for (const att of r.attachments ?? []) {
-                        const usages = attachmentUsages['_embedded']['sw360:attachmentUsages'][0].filter(
+                        const usages = attachmentUsages['_embedded']['sw360:attachmentUsages'].filter(
                             (elem: AttachmentUsage) => elem.attachmentContentId === att.attachmentContentId,
                         )
                         for (const u of usages) {
@@ -232,11 +215,7 @@ function GenerateSourceCodeBundle({
                 }
                 setSaveUsagesPayload(saveUsages)
             } catch (error) {
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                    return
-                }
-                const message = error instanceof Error ? error.message : String(error)
-                MessageService.error(message)
+                ApiUtils.reportError(error)
             } finally {
                 clearTimeout(timeout)
                 setShowProcessing(false)
@@ -583,7 +562,7 @@ function GenerateSourceCodeBundle({
             },
             {
                 id: 'uploadedBy',
-                header: t('Uploaded By'),
+                header: t('Uploaded by'),
                 cell: ({ row }) => {
                     if (row.original.node.type === 'attachment') {
                         return (

@@ -12,7 +12,6 @@
 import { ColumnDef, getCoreRowModel, SortingState, useReactTable } from '@tanstack/react-table'
 import { StatusCodes } from 'http-status-codes'
 import Link from 'next/link'
-import { signOut, useSession } from 'next-auth/react'
 import { useTranslations } from 'next-intl'
 import { PageSizeSelector, SW360Table, TableFooter } from 'next-sw360'
 import { type JSX, useEffect, useMemo, useState } from 'react'
@@ -27,8 +26,8 @@ import {
     Project,
     ProjectPayload,
 } from '@/object-types'
-import MessageService from '@/services/message.service'
-import { ApiUtils, CommonUtils } from '@/utils'
+import { ApiError, CommonUtils } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
 
 interface AlertData {
     variant: string
@@ -40,6 +39,7 @@ interface Props {
     setProjectPayload: React.Dispatch<React.SetStateAction<ProjectPayload>>
     show: boolean
     setShow: (show: boolean) => void
+    mode: 'SET' | 'UPDATE'
 }
 
 type EmbeddedProjects = Embedded<Project, 'sw360:projects'>
@@ -47,26 +47,25 @@ type EmbeddedProjects = Embedded<Project, 'sw360:projects'>
 const Capitalize = (text: string) =>
     text.split('_').reduce((s, c) => s + ' ' + (c.charAt(0) + c.substring(1).toLocaleLowerCase()), '')
 
-export default function LinkProjectsModal({ projectPayload, setProjectPayload, show, setShow }: Props): JSX.Element {
+export default function LinkProjectsModal({
+    projectPayload,
+    setProjectPayload,
+    show,
+    setShow,
+    mode,
+}: Props): JSX.Element {
     const t = useTranslations('default')
     const [linkProjects, setLinkProjects] = useState<Map<string, LinkedProjectData>>(new Map())
     const [alert, setAlert] = useState<AlertData | null>(null)
     const [searchText, setSearchText] = useState<string | undefined>(undefined)
-    const [exactMatch, setExactMatch] = useState(false)
-    const session = useSession()
-
-    useEffect(() => {
-        if (session.status === 'unauthenticated') {
-            void signOut()
-        }
-    }, [
-        session,
-    ])
+    const [byNameOnly, setByNameOnly] = useState(true)
+    const [linking, setLinking] = useState(false)
 
     useEffect(() => {
         setLinkProjects(new Map(Object.entries(projectPayload.linkedProjects ?? {})))
     }, [
         projectPayload,
+        show,
     ])
 
     const columns = useMemo<ColumnDef<Project>[]>(
@@ -194,7 +193,7 @@ export default function LinkProjectsModal({ projectPayload, setProjectPayload, s
     const [pageableQueryParam, setPageableQueryParam] = useState<PageableQueryParam>({
         page: 0,
         page_entries: 10,
-        sort: 'name,asc',
+        sort: 'score,asc',
     })
     const [paginationMeta, setPaginationMeta] = useState<PaginationMeta | undefined>({
         size: 0,
@@ -212,14 +211,13 @@ export default function LinkProjectsModal({ projectPayload, setProjectPayload, s
     const [showProcessing, setShowProcessing] = useState(false)
 
     useEffect(() => {
-        if (session.status === 'loading' || searchText === undefined) return
+        if (searchText === undefined) return
         const controller = new AbortController()
         const signal = controller.signal
         handleSearch(signal)
         return () => controller.abort()
     }, [
         pageableQueryParam,
-        session,
     ])
 
     const table = useReactTable({
@@ -295,8 +293,16 @@ export default function LinkProjectsModal({ projectPayload, setProjectPayload, s
 
     const handleSearch = async (signal?: AbortSignal) => {
         try {
-            if (CommonUtils.isNullOrUndefined(session.data)) return signOut()
+            setShowProcessing(true)
 
+            let filterFieldName: string
+
+            if (byNameOnly || CommonUtils.isNullEmptyOrUndefinedString(searchText)) {
+                filterFieldName = 'name'
+            } else {
+                filterFieldName = 'searchText'
+            }
+            // Search using /projects endpoint
             const queryUrl = CommonUtils.createUrlWithParams(
                 `projects`,
                 Object.fromEntries(
@@ -304,8 +310,8 @@ export default function LinkProjectsModal({ projectPayload, setProjectPayload, s
                         ...pageableQueryParam,
                         ...(searchText && searchText !== ''
                             ? {
-                                  searchText: searchText,
-                                  luceneSearch: !exactMatch,
+                                  [filterFieldName]: searchText,
+                                  luceneSearch: true,
                               }
                             : {}),
                         allDetails: true,
@@ -315,10 +321,12 @@ export default function LinkProjectsModal({ projectPayload, setProjectPayload, s
                     ]),
                 ),
             )
-            const response = await ApiUtils.GET(queryUrl, session.data.user.access_token, signal)
+            const response = await ApiUtils.GET(queryUrl, signal)
             if (response.status !== StatusCodes.OK) {
                 const err = (await response.json()) as ErrorDetails
-                throw new Error(err.message)
+                throw new ApiError(err.message, {
+                    status: response.status,
+                })
             }
 
             const data = (await response.json()) as EmbeddedProjects
@@ -329,11 +337,7 @@ export default function LinkProjectsModal({ projectPayload, setProjectPayload, s
                     : data['_embedded']['sw360:projects'],
             )
         } catch (error) {
-            if (error instanceof DOMException && error.name === 'AbortError') {
-                return
-            }
-            const message = error instanceof Error ? error.message : String(error)
-            MessageService.error(message)
+            ApiUtils.reportError(error)
         } finally {
             setShowProcessing(false)
         }
@@ -361,11 +365,66 @@ export default function LinkProjectsModal({ projectPayload, setProjectPayload, s
         setLinkProjects(m)
     }
 
+    const handleLinkProjects = async (projectId: string) => {
+        setLinking(true)
+        try {
+            const data = {
+                linkedProjects: Object.fromEntries(linkProjects),
+            }
+
+            const response = await ApiUtils.PATCH(`projects/${projectId}`, data)
+            if (response.status !== StatusCodes.OK) {
+                const err = (await response.json()) as ErrorDetails
+                throw new ApiError(err.message, {
+                    status: response.status,
+                })
+            }
+            const res = (await response.json()) as Project
+            setAlert({
+                variant: 'success',
+                message: (
+                    <>
+                        <p>
+                            {`${t('The projects have been successfully linked to project')} `}
+                            <span className='fw-bold'>{res.name}</span>.{' '}
+                        </p>
+                        <p>
+                            {t('Click')}{' '}
+                            <Link
+                                href={`/projects/edit/${projectId}?tab=linkedProjectsAndReleases`}
+                                className='text-link'
+                            >
+                                {t('here')}
+                            </Link>{' '}
+                            {t('to edit the project relation')}.
+                        </p>
+                    </>
+                ),
+            })
+        } catch (error) {
+            if (error instanceof ApiError && error.isAborted) {
+                return
+            }
+            const message =
+                error instanceof ApiError ? error.message : error instanceof Error ? error.message : String(error)
+            setAlert({
+                variant: 'danger',
+                message: (
+                    <>
+                        <p>{message}</p>
+                    </>
+                ),
+            })
+        } finally {
+            setLinking(false)
+        }
+    }
+
     const closeModal = () => {
         setShow(false)
         setProjectData([])
         setAlert(null)
-        setExactMatch(false)
+        setByNameOnly(true)
         setPaginationMeta({
             size: 0,
             totalElements: 0,
@@ -378,6 +437,7 @@ export default function LinkProjectsModal({ projectPayload, setProjectPayload, s
             sort: '',
         })
         setSearchText(undefined)
+        setLinkProjects(new Map())
     }
 
     return (
@@ -417,22 +477,36 @@ export default function LinkProjectsModal({ projectPayload, setProjectPayload, s
                                 />
                             </Col>
                             <Col xs='auto'>
-                                <Form.Group controlId='exact-match-group'>
+                                <Form.Group>
                                     <Form.Check
                                         inline
-                                        name='exact-match'
+                                        name='by-name-only'
                                         type='checkbox'
-                                        id='exact-match'
-                                        onChange={() => setExactMatch(!exactMatch)}
+                                        id='by-name-only'
+                                        checked={byNameOnly}
+                                        onChange={() => setByNameOnly(!byNameOnly)}
                                     />
-                                    <Form.Label
-                                        className='pt-2'
-                                        value={exactMatch}
-                                    >
-                                        {t('Exact Match')}{' '}
-                                        <sup>
-                                            <BsInfoCircle size={20} />
-                                        </sup>
+                                    <Form.Label className='pt-2'>
+                                        {t('By Name Only')}{' '}
+                                        <OverlayTrigger
+                                            overlay={
+                                                <Tooltip>
+                                                    <div>
+                                                        {t(
+                                                            'Keep this checkbox checked to search elements only by name field',
+                                                        )}
+                                                    </div>
+                                                    {t(
+                                                        'Uncheck it to search for elements where other fields like description matches the search terms',
+                                                    )}
+                                                </Tooltip>
+                                            }
+                                            placement='top'
+                                        >
+                                            <sup>
+                                                <BsInfoCircle size={20} />
+                                            </sup>
+                                        </OverlayTrigger>
                                     </Form.Label>
                                 </Form.Group>
                             </Col>
@@ -441,8 +515,14 @@ export default function LinkProjectsModal({ projectPayload, setProjectPayload, s
                                     variant='secondary'
                                     onClick={() => {
                                         if (!searchText) setSearchText('')
+                                        setPageableQueryParam((prev) => ({
+                                            ...prev,
+                                            page: 0,
+                                            sort: 'score,asc',
+                                        }))
                                         handleSearch()
                                     }}
+                                    className='mt-2'
                                 >
                                     {t('Search')}
                                 </Button>
@@ -488,10 +568,10 @@ export default function LinkProjectsModal({ projectPayload, setProjectPayload, s
                 <Button
                     variant='primary'
                     onClick={() => {
-                        projectPayloadSetter()
-                        closeModal()
+                        mode === 'SET' ? projectPayloadSetter() : handleLinkProjects(projectPayload.id ?? '')
+                        mode === 'SET' && closeModal()
                     }}
-                    disabled={linkProjects.size === 0}
+                    disabled={linkProjects.size === 0 || linking}
                 >
                     {t('Link Projects')}
                 </Button>

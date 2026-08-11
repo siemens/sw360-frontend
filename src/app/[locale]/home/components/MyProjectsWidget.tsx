@@ -8,25 +8,72 @@
 // SPDX-License-Identifier: EPL-2.0
 // License-Filename: LICENSE
 
+'use client'
+
 import { ColumnDef, getCoreRowModel, SortingState, useReactTable } from '@tanstack/react-table'
 import { StatusCodes } from 'http-status-codes'
 import Link from 'next/link'
-import { getSession, signOut } from 'next-auth/react'
+
 import { useTranslations } from 'next-intl'
 import { SW360Table, TableFooter } from 'next-sw360'
 import { ReactNode, useEffect, useMemo, useState } from 'react'
 import { Spinner } from 'react-bootstrap'
 import LicenseClearing from '@/components/LicenseClearing'
 import { Embedded, ErrorDetails, PageableQueryParam, PaginationMeta, Project } from '@/object-types'
-import MessageService from '@/services/message.service'
-import { ApiUtils, CommonUtils } from '@/utils'
+import { ApiError, CommonUtils } from '@/utils'
+import ApiUtils from '@/utils/api/authenticatedApi.util'
 import HomeTableHeader from './HomeTableHeader'
 
 type EmbeddedProjects = Embedded<Project, 'sw360:projects'>
 
+const ALL_ROLE_KEYS = [
+    'createdBy',
+    'moderator',
+    'contributor',
+    'projectOwner',
+    'leadArchitect',
+    'projectResponsible',
+    'securityResponsible',
+]
+
+const ALL_CLEARING_STATE_KEYS = [
+    'stateOpen',
+    'stateClosed',
+    'stateInProgress',
+]
+
 export default function MyProjectsWidget(): ReactNode {
     const t = useTranslations('default')
     const [reload, setReload] = useState(false)
+    const [roles, setRoles] = useState<string[]>([
+        ...ALL_ROLE_KEYS,
+    ])
+    const [clearingStates, setClearingStates] = useState<string[]>([
+        ...ALL_CLEARING_STATE_KEYS,
+    ])
+    const [appliedFilters, setAppliedFilters] = useState<{
+        roles: string[]
+        clearingStates: string[]
+    }>({
+        roles: [
+            ...ALL_ROLE_KEYS,
+        ],
+        clearingStates: [
+            ...ALL_CLEARING_STATE_KEYS,
+        ],
+    })
+
+    const handleSearch = () => {
+        setAppliedFilters({
+            roles,
+            clearingStates,
+        })
+        setPageableQueryParam((prev) => ({
+            ...prev,
+            page: 0,
+        }))
+        setReload((prev) => !prev)
+    }
 
     const columns = useMemo<ColumnDef<Project>[]>(
         () => [
@@ -57,7 +104,7 @@ export default function MyProjectsWidget(): ReactNode {
                 accessorKey: 'description',
                 cell: (info) => info.getValue(),
                 meta: {
-                    width: '50%',
+                    width: '48%',
                 },
             },
             {
@@ -109,22 +156,34 @@ export default function MyProjectsWidget(): ReactNode {
 
         void (async () => {
             try {
-                const session = await getSession()
-                if (CommonUtils.isNullOrUndefined(session)) return signOut()
-
-                const queryUrl = CommonUtils.createUrlWithParams(
-                    `projects/myprojects`,
-                    Object.fromEntries(
+                const queryParams: Record<string, string> = {
+                    ...Object.fromEntries(
                         Object.entries(pageableQueryParam).map(([key, value]) => [
                             key,
                             String(value),
                         ]),
                     ),
-                )
-                const response = await ApiUtils.GET(queryUrl, session.user.access_token, signal)
+                }
+
+                if (appliedFilters.roles.length > 0) {
+                    ALL_ROLE_KEYS.forEach((key) => {
+                        queryParams[key] = appliedFilters.roles.includes(key) ? 'true' : 'false'
+                    })
+                }
+
+                if (appliedFilters.clearingStates.length > 0) {
+                    ALL_CLEARING_STATE_KEYS.forEach((key) => {
+                        queryParams[key] = appliedFilters.clearingStates.includes(key) ? 'true' : 'false'
+                    })
+                }
+
+                const queryUrl = CommonUtils.createUrlWithParams(`projects/myprojects`, queryParams)
+                const response = await ApiUtils.GET(queryUrl, signal)
                 if (response.status !== StatusCodes.OK) {
                     const err = (await response.json()) as ErrorDetails
-                    throw new Error(err.message)
+                    throw new ApiError(err.message, {
+                        status: response.status,
+                    })
                 }
 
                 const data = (await response.json()) as EmbeddedProjects
@@ -135,11 +194,7 @@ export default function MyProjectsWidget(): ReactNode {
                         : data['_embedded']['sw360:projects'],
                 )
             } catch (error) {
-                if (error instanceof DOMException && error.name === 'AbortError') {
-                    return
-                }
-                const message = error instanceof Error ? error.message : String(error)
-                MessageService.error(message)
+                ApiUtils.reportError(error)
             } finally {
                 clearTimeout(timeout)
                 setShowProcessing(false)
@@ -150,6 +205,7 @@ export default function MyProjectsWidget(): ReactNode {
     }, [
         pageableQueryParam,
         reload,
+        appliedFilters,
     ])
 
     const table = useReactTable({
@@ -228,6 +284,11 @@ export default function MyProjectsWidget(): ReactNode {
             <HomeTableHeader
                 title={t('My Projects')}
                 setReload={setReload}
+                roles={roles}
+                setRoles={setRoles}
+                clearingStates={clearingStates}
+                setClearingStates={setClearingStates}
+                onSearch={handleSearch}
             />
             <div className='mb-3'>
                 {pageableQueryParam && table && paginationMeta ? (
