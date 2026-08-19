@@ -44,6 +44,7 @@ import {
 import MessageService from '@/services/message.service'
 import { ApiError, CommonUtils } from '@/utils'
 import ApiUtils from '@/utils/api/authenticatedApi.util'
+import { getAuthenticatedUserIdentity } from '@/utils/api/authenticatedUser.util'
 import DeleteProjectDialog from '../../../components/DeleteProjectDialog'
 import Obligations from '../../../components/Obligations/Obligations'
 
@@ -62,13 +63,35 @@ function EditProject({
         fullName: '',
     })
 
+    const [userIdentity, setUserIdentity] = useState<Awaited<ReturnType<typeof getAuthenticatedUserIdentity>> | null>(
+        null,
+    )
+
+    useEffect(() => {
+        void (async () => {
+            try {
+                setUserIdentity(await getAuthenticatedUserIdentity())
+            } catch {
+                setUserIdentity(null)
+            }
+        })()
+    }, [])
+
+    const canEditObligations =
+        userIdentity?.userGroup === UserGroupType.CLEARING_ADMIN ||
+        userIdentity?.userGroup === UserGroupType.SW360_ADMIN
+
     const searchParams = useSearchParams()
     const TABS = [
         'summary',
         'administration',
         'linkedProjectsAndReleases',
         'attachments',
-        'obligations',
+        ...(canEditObligations
+            ? [
+                  'obligations',
+              ]
+            : []),
         ...(isPackageFeatureEnabled
             ? [
                   'linkedPackages',
@@ -780,18 +803,20 @@ function EditProject({
                                                 >
                                                     <div className='my-2'>{t('Attachments')}</div>
                                                 </ListGroup.Item>
-                                                <ListGroup.Item
-                                                    action
-                                                    eventKey='obligations'
-                                                >
-                                                    <SidebarCountBadge
-                                                        badgeClassName='obligations-badge--danger'
-                                                        countId='obligationsCount'
-                                                        isLoading={false}
-                                                        label={t('Obligations')}
-                                                        value={`${obligationsNonOpenCount} / ${obligationsTotal}`}
-                                                    />
-                                                </ListGroup.Item>
+                                                {canEditObligations && (
+                                                    <ListGroup.Item
+                                                        action
+                                                        eventKey='obligations'
+                                                    >
+                                                        <SidebarCountBadge
+                                                            badgeClassName='obligations-badge--danger'
+                                                            countId='obligationsCount'
+                                                            isLoading={false}
+                                                            label={t('Obligations')}
+                                                            value={`${obligationsNonOpenCount} / ${obligationsTotal}`}
+                                                        />
+                                                    </ListGroup.Item>
+                                                )}
                                             </ListGroup>
                                         </Col>
                                         <Col className='me-3'>
@@ -899,14 +924,16 @@ function EditProject({
                                                             setDocumentPayload={setProjectPayload}
                                                         />
                                                     </Tab.Pane>
-                                                    <Tab.Pane eventKey='obligations'>
-                                                        <Obligations
-                                                            projectId={projectId}
-                                                            actionType={ActionType.EDIT}
-                                                            payload={obligations}
-                                                            setPayload={setObligations}
-                                                        />
-                                                    </Tab.Pane>
+                                                    {canEditObligations && (
+                                                        <Tab.Pane eventKey='obligations'>
+                                                            <Obligations
+                                                                projectId={projectId}
+                                                                actionType={ActionType.EDIT}
+                                                                payload={obligations}
+                                                                setPayload={setObligations}
+                                                            />
+                                                        </Tab.Pane>
+                                                    )}
                                                 </Tab.Content>
                                             </Row>
                                         </Col>
