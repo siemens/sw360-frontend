@@ -171,9 +171,9 @@ const comparator = (a: NestedRows<TypedProject | TypedRelease>, b: NestedRows<Ty
     } else {
         const aName = `${a.node.entity.name} ${!CommonUtils.isNullEmptyOrUndefinedString(a.node.entity.version) && `(${a.node.entity.version})`}`
         const bName = `${b.node.entity.name} ${!CommonUtils.isNullEmptyOrUndefinedString(b.node.entity.version) && `(${b.node.entity.version})`}`
-        if (aName === bName) return 0
-        else if (aName < bName) return -1
-        else return 1
+        return aName.localeCompare(bName, undefined, {
+            sensitivity: 'base',
+        })
     }
 }
 
